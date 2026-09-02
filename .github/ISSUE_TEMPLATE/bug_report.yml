@@ -1,0 +1,98 @@
+name: Bug report
+description: File a bug/issue
+title: "[BUG] <title>"
+labels: [bug]
+body:
+  - type: checkboxes
+    id: low-effort-checks
+    attributes:
+      label: Please confirm
+      description: Issues without all checks may be ignored/closed.
+      options:
+        - label: I have searched existing issues
+        - label: This issue is not a duplicate of an existing one
+        - label: This is an issue with CreamDeck itself, not with a specific unlocker (SmokeAPI/CreamAPI/ScreamAPI/Uplay R1&R2) failing to work in a particular game
+
+  - type: textarea
+    attributes:
+      label: Bug Report Description
+      description: A clear and concise description of what the bug is and, if possible, the steps you used to get to the bug. If appropriate, include screenshots or videos.
+      placeholder: |
+        When I try to use ...
+
+        Steps to reproduce the behavior:
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Expected Behaviour
+      description: A brief description of the expected behavior.
+      placeholder: It should be ...
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Steam game (name + AppID)
+      description: Which game were you trying to unlock DLC for? The Steam AppID is the number in the game's store URL (store.steampowered.com/app/<AppID>).
+      placeholder: "Risk of Rain 2 (632360)"
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Unlocker used
+      multiple: false
+      options:
+        - SmokeAPI
+        - CreamAPI
+        - ScreamAPI
+        - Uplay R1 Unlocker
+        - Uplay R2 Unlocker
+        - Koaloader
+        - Not sure / not applicable
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: SteamOS version
+      placeholder: "SteamOS 3.6.x"
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Decky Loader version
+      placeholder: v3.x.x
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: CreamDeck version / commit
+      description: The release tag you installed, or the commit if built from source.
+      placeholder: v0.0.1-abc1234
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: CreamDeck plugin log
+      description: "In Decky Loader's settings, find CreamDeck and view its logs (or check ~/homebrew/logs/CreamDeck/ over SSH/desktop mode). Please attach the full log, not just the last few lines."
+      placeholder: CreamDeck.log
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Have you modified the read-only filesystem at any point?
+      description: "Describe how here, if you haven't done anything you can leave this blank"
+      placeholder: "Yes, I've installed neofetch via pacman."
+    validations:
+      required: false

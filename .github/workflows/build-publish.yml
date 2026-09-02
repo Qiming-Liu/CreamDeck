@@ -1,0 +1,132 @@
+name: Build & Publish
+
+# Manually-triggered: bumps package.json's version (patch/minor/major, per the
+# chosen release_type — semantic versioning starting from 1.0.0), commits and
+# tags that bump on the triggering branch, then builds the plugin and
+# publishes it as a GitHub Release, packaged the way Decky Loader's "install
+# from zip" expects — a single zip whose only top-level entry is a folder
+# named after the plugin.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Version bump'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      prerelease:
+        description: 'Mark as a pre-release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # No cache: pnpm here — that requires a committed pnpm-lock.yaml,
+          # which doesn't exist yet (nobody's run `pnpm install` locally to
+          # generate one). Re-add it once one's committed.
+
+      - name: Bump version
+        id: bump
+        shell: bash
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "${{ inputs.release_type }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          NEW="$MAJOR.$MINOR.$PATCH"
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            p.version = '$NEW';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "Bumping $CURRENT -> $NEW (${{ inputs.release_type }})"
+
+      - name: Commit and tag version bump
+        id: release_commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "Release v${{ steps.bump.outputs.version }}"
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "v${{ steps.bump.outputs.version }}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Resolve tag
+        id: vars
+        shell: bash
+        run: |
+          TAG="v${{ steps.bump.outputs.version }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: $TAG"
+
+      - name: Stage plugin package
+        run: |
+          mkdir -p package/CreamDeck
+          # package.json MUST be included: decky-loader's backend only picks the
+          # modern ESMODULE_V1 load path (dynamic import(), supports the `export`
+          # statement our rollup bundle ends with) when it finds a package.json
+          # with "type": "module" inside the installed plugin directory. Without
+          # it, decky-loader falls back to eval()'ing dist/index.js as a legacy
+          # IIFE bundle, which chokes on that `export` with "Unexpected token
+          # 'export'" (see SteamDeckHomebrew/decky-loader's plugin.py, and how
+          # CheatDeck's own build workflow includes package.json for the same
+          # reason).
+          cp plugin.json package.json main.py package/CreamDeck/
+          cp -r py_modules package/CreamDeck/
+          cp -r resources package/CreamDeck/
+          cp -r dist package/CreamDeck/
+          cp LICENSE README.md package/CreamDeck/
+          cd package
+          zip -r ../CreamDeck.zip CreamDeck
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: CreamDeck ${{ steps.vars.outputs.tag }}
+          body: |
+            CreamDeck build from commit `${{ steps.release_commit.outputs.sha }}`.
+
+            Install via Decky Loader's "Install from ZIP" option, or extract
+            `CreamDeck.zip` into your Decky plugins directory.
+          prerelease: ${{ inputs.prerelease }}
+          files: CreamDeck.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

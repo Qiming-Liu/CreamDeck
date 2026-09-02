@@ -1,0 +1,6 @@
+node_modules/
+dist/
+out/
+*.log
+__pycache__/
+*.pyc

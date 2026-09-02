@@ -1,0 +1,11 @@
+{
+  "name": "CreamDeck",
+  "author": "Qiming-Liu",
+  "flags": ["debug", "_root"],
+  "api_version": 1,
+  "publish": {
+    "tags": ["dlc", "steam", "root"],
+    "description": "Select an installed Steam game from its library context menu and unlock its DLC (SmokeAPI/CreamAPI/ScreamAPI/Uplay R1&R2/Koaloader), directly on the Steam Deck.",
+    "image": ""
+  }
+}

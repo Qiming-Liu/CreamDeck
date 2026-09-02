@@ -1,0 +1,84 @@
+name: PR Build & Test
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    name: Frontend build & type-check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # No cache: pnpm here — that requires a committed pnpm-lock.yaml,
+          # which doesn't exist yet (nobody's run `pnpm install` locally to
+          # generate one). Re-add it once one's committed.
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Type-check
+        run: pnpm exec tsc --noEmit
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v7
+        with:
+          name: creamdeck-dist
+          path: dist/
+
+  backend:
+    name: Backend syntax & unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Syntax-check every module
+        run: |
+          python -m py_compile main.py
+          find py_modules -name '*.py' -print0 | xargs -0 python -m py_compile
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+  plugin-manifest:
+    name: Validate plugin.json
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Check plugin.json is valid JSON with required fields
+        run: |
+          python - <<'EOF'
+          import json
+          with open("plugin.json") as f:
+              data = json.load(f)
+          for field in ("name", "author", "flags", "api_version"):
+              assert field in data, f"plugin.json missing required field: {field}"
+          print("plugin.json OK:", data["name"])
+          EOF
