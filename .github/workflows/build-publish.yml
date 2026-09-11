@@ -114,7 +114,7 @@ jobs:
           cp -r dist package/CreamDeck/
           cp LICENSE README.md package/CreamDeck/
           cd package
-          zip -r ../CreamDeck.zip CreamDeck
+          zip -r "../CreamDeck.${{ steps.vars.outputs.tag }}.zip" CreamDeck
 
       - name: Publish release
         uses: softprops/action-gh-release@v3
@@ -125,8 +125,8 @@ jobs:
             CreamDeck build from commit `${{ steps.release_commit.outputs.sha }}`.
 
             Install via Decky Loader's "Install from ZIP" option, or extract
-            `CreamDeck.zip` into your Decky plugins directory.
+            `CreamDeck.${{ steps.vars.outputs.tag }}.zip` into your Decky plugins directory.
           prerelease: ${{ inputs.prerelease }}
-          files: CreamDeck.zip
+          files: CreamDeck.${{ steps.vars.outputs.tag }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
