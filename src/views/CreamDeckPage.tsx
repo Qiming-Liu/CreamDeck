@@ -18,6 +18,7 @@ import {
   UnlockerInfo,
   uninstallDlcUnlocker,
 } from "../utils/backend";
+import { useTranslations } from "../utils/i18n";
 import { applyWineDllOverride } from "../utils/wineDllOverride";
 
 // Which unlockers Koaloader can autoload alongside its proxy DLL.
@@ -41,6 +42,7 @@ const PROXY_CAPABLE_UNLOCKERS = new Set(["smokeapi", "creamapi", "koaloader"]);
 const PAGE_TOP_OFFSET = "56px";
 
 export default function CreamDeckPage() {
+  const t = useTranslations();
   const appId = useMemo(() => getAppIdFromLocation(), []);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -62,7 +64,7 @@ export default function CreamDeckPage() {
 
   useEffect(() => {
     if (!appId) {
-      setError("No appid in URL");
+      setError(t.noAppId);
       setLoading(false);
       return;
     }
@@ -70,7 +72,7 @@ export default function CreamDeckPage() {
       try {
         const page = await getGamePage(appId);
         if (!page.found) {
-          setError("This game isn't installed (or its Steam library couldn't be read).");
+          setError(t.gameNotInstalled);
           setLoading(false);
           return;
         }
@@ -89,7 +91,7 @@ export default function CreamDeckPage() {
         }
         setLoading(false);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load this game's info.");
+        setError(e instanceof Error ? e.message : t.loadFailed);
         setLoading(false);
       }
     })();
@@ -240,28 +242,23 @@ export default function CreamDeckPage() {
 
       <Focusable style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0.75em 1em 1em" }}>
         {integrityError && (
-          <PanelSection title="Integrity check failed">
+          <PanelSection title={t.integrityTitle}>
             <PanelSectionRow>{integrityError}</PanelSectionRow>
-            <PanelSectionRow>
-              Already verified and it's still showing this? Steam's verify only restores the
-              game's own files — it won't remove an unlocker's leftover config/proxy files, which
-              is usually what's actually causing this. Use the button below to remove them
-              directly.
-            </PanelSectionRow>
+            <PanelSectionRow>{t.integrityHint}</PanelSectionRow>
             <PanelSectionRow>
               <ButtonItem layout="below" disabled={busy} onClick={onForceCleanup}>
-                {busy ? "Working..." : "Remove all unlocker files"}
+                {busy ? t.working : t.removeUnlockerFiles}
               </ButtonItem>
             </PanelSectionRow>
           </PanelSection>
         )}
 
-        <PanelSection title="Unlocker">
+        <PanelSection title={t.unlockerTitle}>
           <PanelSectionRow>
             <Dropdown
               rgOptions={unlockers.map((u) => ({
                 data: u.key,
-                label: u.detected ? `${u.label} (detected)` : u.label,
+                label: u.detected ? `${u.label} ${t.detectedSuffix}` : u.label,
               }))}
               selectedOption={selectedUnlocker}
               disabled={installed}
@@ -269,22 +266,19 @@ export default function CreamDeckPage() {
             />
           </PanelSectionRow>
           {!selectedInfo?.detected && selectedUnlocker !== "koaloader" && (
-            <PanelSectionRow>
-              This game doesn't seem to have {selectedInfo?.label ?? "this unlocker"}'s target
-              file — installing it anyway probably won't do anything.
-            </PanelSectionRow>
+            <PanelSectionRow>{t.noTargetFile(selectedInfo?.label ?? "this unlocker")}</PanelSectionRow>
           )}
         </PanelSection>
 
         {showKoaloaderAutoload && (
-          <PanelSection title="Koaloader: auto-load">
+          <PanelSection title={t.koaloaderAutoloadTitle}>
             {KOALOADER_AUTOLOAD_CHOICES.map((key) => {
               const info = unlockers.find((u) => u.key === key);
               return (
                 <PanelSectionRow key={key}>
                   <ToggleField
                     label={info?.label ?? key}
-                    description={info?.detected ? "detected in this game" : undefined}
+                    description={info?.detected ? t.detectedInGame : undefined}
                     checked={koaloaderAutoload.has(key)}
                     disabled={installed}
                     onChange={(checked) => toggleKoaloaderAutoload(key, checked)}
@@ -296,25 +290,29 @@ export default function CreamDeckPage() {
         )}
 
         {showDlcList ? (
-          <PanelSection title={`DLC (${enabledIds.size}/${dlcs.length} enabled)`}>
+          <PanelSection title={t.dlcTitle(enabledIds.size, dlcs.length)}>
             <PanelSectionRow>
               <ButtonItem layout="below" onClick={() => selectAll(true)}>
-                Select all
+                {t.selectAll}
               </ButtonItem>
             </PanelSectionRow>
             <PanelSectionRow>
               <ButtonItem layout="below" onClick={() => selectAll(false)}>
-                Deselect all
+                {t.deselectAll}
               </ButtonItem>
             </PanelSectionRow>
 
-            {dlcs.length === 0 && <PanelSectionRow>No DLC found for this game.</PanelSectionRow>}
+            {dlcs.length === 0 && <PanelSectionRow>{t.noDlcFound}</PanelSectionRow>}
+
+            {dlcs.some((dlc) => dlc.has_depot) && (
+              <PanelSectionRow>{t.depotWarningNote}</PanelSectionRow>
+            )}
 
             {dlcs.map((dlc) => (
               <PanelSectionRow key={dlc.id}>
                 <ToggleField
-                  label={dlc.name}
-                  description={dlc.id}
+                  label={dlc.has_depot ? `⚠ ${dlc.name}` : dlc.name}
+                  description={dlc.has_depot ? `${dlc.id} · ${t.needsDepotFiles}` : dlc.id}
                   checked={enabledIds.has(dlc.id)}
                   onChange={(checked) => toggleDlc(dlc.id, checked)}
                 />
@@ -322,21 +320,19 @@ export default function CreamDeckPage() {
             ))}
           </PanelSection>
         ) : (
-          <PanelSection title="DLC">
+          <PanelSection title={t.dlcPanelFallbackTitle}>
             <PanelSectionRow>
-              {selectedInfo?.label ?? "This unlocker"} unlocks everything by default — there's no
-              per-DLC list for it in this plugin (it needs a catalog this plugin doesn't have,
-              since it only scans Steam).
+              {t.noDlcListNote(selectedInfo?.label ?? "This unlocker")}
             </PanelSectionRow>
           </PanelSection>
         )}
 
         {showProxyControls && (
-          <PanelSection title="Proxy mode">
+          <PanelSection title={t.proxyModeTitle}>
             <PanelSectionRow>
               <ToggleField
-                label="Use a proxy DLL"
-                description="Instead of replacing the unlocker's target file directly — use this if the game doesn't get along with a direct replacement."
+                label={t.useProxyDll}
+                description={t.useProxyDllDescription}
                 checked={useProxy}
                 disabled={installed}
                 onChange={(checked) => {
@@ -360,37 +356,25 @@ export default function CreamDeckPage() {
             )}
             {useProxy && (
               <>
-                <PanelSectionRow>
-                  On Steam Deck, Proton's own built-in {proxyDll}.dll is normally preferred over
-                  the one CreamDeck drops into the game folder — so the unlocker never actually
-                  loads unless this game's launch options tell Proton to prefer it instead. Without
-                  this, the game will launch fine but DLC will stay locked.
-                </PanelSectionRow>
+                <PanelSectionRow>{t.protonOverrideNote(proxyDll)}</PanelSectionRow>
                 <PanelSectionRow>
                   <ButtonItem
                     layout="below"
                     disabled={launchOptionStatus === "working"}
                     onClick={onApplyWineDllOverride}
                   >
-                    {launchOptionStatus === "working"
-                      ? "Working..."
-                      : `Set launch option for ${proxyDll}.dll`}
+                    {launchOptionStatus === "working" ? t.working : t.setLaunchOption(proxyDll)}
                   </ButtonItem>
                 </PanelSectionRow>
                 {launchOptionStatus === "applied" && (
-                  <PanelSectionRow>
-                    Done — launch options updated. Fully close and relaunch the game for it to take
-                    effect.
-                  </PanelSectionRow>
+                  <PanelSectionRow>{t.launchOptionApplied}</PanelSectionRow>
                 )}
                 {launchOptionStatus === "already" && (
-                  <PanelSectionRow>This game's launch options already have it set.</PanelSectionRow>
+                  <PanelSectionRow>{t.launchOptionAlready}</PanelSectionRow>
                 )}
                 {launchOptionStatus === "error" && (
                   <PanelSectionRow>
-                    Couldn't read this game's launch options. Set it manually instead: add{" "}
-                    {`WINEDLLOVERRIDES="${proxyDll}=n,b" %command%`} to this game's Launch Options
-                    in Steam (Properties → General).
+                    {t.launchOptionError(`WINEDLLOVERRIDES="${proxyDll}=n,b" %command%`)}
                   </PanelSectionRow>
                 )}
               </>
@@ -401,13 +385,13 @@ export default function CreamDeckPage() {
         <PanelSection>
           <PanelSectionRow>
             <ButtonItem layout="below" disabled={busy || !!integrityError} onClick={onInstall}>
-              {busy ? "Working..." : installed ? "Update install" : "Install"}
+              {busy ? t.working : installed ? t.updateInstall : t.install}
             </ButtonItem>
           </PanelSectionRow>
           {installed && (
             <PanelSectionRow>
               <ButtonItem layout="below" disabled={busy} onClick={onUninstall}>
-                Uninstall
+                {busy ? t.working : t.uninstall}
               </ButtonItem>
             </PanelSectionRow>
           )}

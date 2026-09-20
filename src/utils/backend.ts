@@ -3,6 +3,9 @@ import { callable } from "@decky/api";
 export interface DlcInfo {
   id: string;
   name: string;
+  // Whether this DLC has its own depot on Steam (ships actual content files,
+  // not just an ownership flag) — null when that couldn't be determined.
+  has_depot: boolean | null;
 }
 
 export interface UnlockerInfo {
