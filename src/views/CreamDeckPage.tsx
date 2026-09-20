@@ -41,6 +41,12 @@ const PROXY_CAPABLE_UNLOCKERS = new Set(["smokeapi", "creamapi", "koaloader"]);
 // push its own content down far enough to clear it.
 const PAGE_TOP_OFFSET = "56px";
 
+// Game Mode also docks a fixed button-hint bar (A/B/X/Y, Options, ...) along
+// the bottom of the screen, same deal as the top status bar above — nothing
+// in the outer chrome reserves space for it, so the last row of content ends
+// up hidden underneath it unless this page pads its own scroll area past it.
+const PAGE_BOTTOM_OFFSET = "56px";
+
 export default function CreamDeckPage() {
   const t = useTranslations();
   const appId = useMemo(() => getAppIdFromLocation(), []);
@@ -240,7 +246,14 @@ export default function CreamDeckPage() {
         {pageTitle}
       </div>
 
-      <Focusable style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0.75em 1em 1em" }}>
+      <Focusable
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          padding: `0.75em 1em calc(1em + ${PAGE_BOTTOM_OFFSET})`,
+        }}
+      >
         {integrityError && (
           <PanelSection title={t.integrityTitle}>
             <PanelSectionRow>{integrityError}</PanelSectionRow>
