@@ -24,6 +24,10 @@ CreamDeck is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
 
 > [!NOTE]
 > An unlocker only spoofs the platform's *ownership check* — it does not download DLC content. If a DLC's actual files were never downloaded (because your account doesn't own it), unlocking it will make the game think it owns content it can't actually load, which can crash on launch. This does **not** apply to every DLC on every game, though: some games (Risk of Rain 2 among them — see [Tested games](#tested-games)) ship all DLC content in the base install for everyone, specifically so mixed-ownership multiplayer lobbies work — for those, a full **Verify integrity of game files** in the client (see [Troubleshooting](#troubleshooting)) is enough to have the content locally even without owning it.
+>
+> CreamDeck flags exactly which DLC this applies to: any DLC listed with a **⚠** has its own depot on Steam (the same data [SteamDB's "Depots" tab](https://steamdb.info/app/394360/depots/) for a game shows), meaning it ships actual content files rather than just an ownership flag — unlocking it is more likely to need those files already present to actually work.
+
+CreamDeck's own UI follows your Steam client's language setting — it shows Chinese when Steam is set to Simplified or Traditional Chinese, and English otherwise.
 
 ### Unlockers
 
@@ -64,6 +68,15 @@ CreamDeck v1 only covers **games running through Proton, installed via the one s
 5. Fully close and relaunch the game (a launch-options change only takes effect on a fresh launch).
 
 Confirmed working: game launches clean, DLC shows unlocked in-game, survives a later **Verify integrity** without needing to redo the launch-option step (only a reinstall through CreamDeck, since verify always undoes the DLL swap itself).
+
+### Street Fighter 6
+
+1. Open the game's CreamDeck page, pick **SmokeAPI**.
+2. Enable **Use a proxy DLL**, pick a DLL, then click **Set launch option for `<dll>`.dll** (see [Proxy mode](#proxy-mode)) — required on Proton or the unlock silently never applies.
+3. Check the DLC you want unlocked and click **Install**.
+4. Fully close and relaunch the game (a launch-options change only takes effect on a fresh launch).
+
+Confirmed working: game launches clean, DLC unlocked in-game.
 
 ## Troubleshooting
 

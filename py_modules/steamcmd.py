@@ -97,6 +97,14 @@ async def _run_app_info_print(app_id: str) -> str:
 class DlcInfo(TypedDict):
     id: str
     name: str
+    # Whether this DLC has its own depot in the base game's depot list (see
+    # https://steamdb.info/app/<id>/depots/) — i.e. it ships actual content
+    # files rather than just an ownership flag. An unlocker only spoofs
+    # ownership; it never downloads those files, so a DLC with its own depot
+    # can still fail to load its content post-unlock if the account never
+    # owned it. None means this couldn't be determined (the depot data
+    # itself was unavailable, e.g. the store-page DLC id fallback below).
+    has_depot: Optional[bool]
 
 
 class AppInfo(TypedDict):
@@ -186,6 +194,26 @@ def _extract_dlc_ids(app_data: dict) -> set[str]:
     return dlc_ids
 
 
+def _dlc_ids_with_depot(app_data: dict) -> set[str]:
+    """DLC ids that have at least one depot of their own in the base game's
+    depot list (depot.dlcappid) — the same data steamdb.info's "Depots" tab
+    for a game shows. Only meaningful when `depots` itself is actually
+    present; callers must check that separately, since an empty/missing
+    section means "unknown", not "no DLC has a depot"."""
+    dlc_ids: set[str] = set()
+
+    depots = get_child(app_data, "depots")
+    if isinstance(depots, dict):
+        for key, depot in depots.items():
+            if not key.isdigit() or not isinstance(depot, dict):
+                continue
+            dlc_app_id = get_child(depot, "dlcappid")
+            if dlc_app_id and str(dlc_app_id).isdigit() and int(dlc_app_id) > 0:
+                dlc_ids.add(str(dlc_app_id))
+
+    return dlc_ids
+
+
 def _dlc_name_from_cache(dlc_id: str) -> Optional[str]:
     """Best-effort DLC display name from whichever cache (web API or local VDF) we
     might already have for it, without triggering a new query."""
@@ -235,15 +263,27 @@ async def get_app_info(app_id: str, branch: str = "public", build_id: int = 0) -
 
     name = get_child(get_child(app_data, "common"), "name") or app_id
     dlc_ids = _extract_dlc_ids(app_data)
+
+    depots = get_child(app_data, "depots")
+    depot_data_available = isinstance(depots, dict) and len(depots) > 0
+    depot_dlc_ids = _dlc_ids_with_depot(app_data) if depot_data_available else set()
+
     if not dlc_ids:
         # The web API's anonymous-login response is often missing depots/extended
         # (flagged "_missing_token"/"public_only") even when it has the game's own
         # name — the store page's DLC list is public data that doesn't need that.
+        # That also means depot data is unavailable for these ids (has_depot=None).
         store_dlc_ids = await steam_store_api.get_dlc_ids(app_id)
         if store_dlc_ids:
             dlc_ids = set(store_dlc_ids)
+            depot_data_available = False
 
     dlcs = [
-        DlcInfo(id=dlc_id, name=await _dlc_name(dlc_id)) for dlc_id in sorted(dlc_ids, key=int)
+        DlcInfo(
+            id=dlc_id,
+            name=await _dlc_name(dlc_id),
+            has_depot=(dlc_id in depot_dlc_ids) if depot_data_available else None,
+        )
+        for dlc_id in sorted(dlc_ids, key=int)
     ]
     return AppInfo(app_id=app_id, name=name, dlcs=dlcs)
