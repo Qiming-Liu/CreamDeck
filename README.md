@@ -5,6 +5,8 @@
 
 CreamDeck is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin for unlocking installed PC game DLC (via SmokeAPI, CreamAPI, ScreamAPI, Uplay R1/R2 Unlocker, or Koaloader) directly on your Deck — a port of [CreamInstaller](https://github.com/FroggMaster/CreamInstaller)'s core DLC-selection and install/uninstall flow, focused on the one storefront that's already running through Proton on-device.
 
+![CreamDeck's per-game page, listing Street Fighter 6's DLC with SmokeAPI selected](docs/screenshot.png)
+
 ## Installation
 
 1. Enable Developer Mode in Decky Loader.

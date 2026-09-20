@@ -5,7 +5,9 @@ name: Build & Publish
 # tags that bump on the triggering branch, then builds the plugin and
 # publishes it as a GitHub Release, packaged the way Decky Loader's "install
 # from zip" expects — a single zip whose only top-level entry is a folder
-# named after the plugin.
+# named after the plugin. The `notes` input becomes the release's summary
+# line — fill it in with what actually changed; left blank, it falls back to
+# a generic "routine build" line instead of naming a real change.
 
 on:
   workflow_dispatch:
@@ -24,6 +26,11 @@ on:
         required: false
         type: boolean
         default: false
+      notes:
+        description: "What's new in this release (used as the release notes summary; leave blank for a generic note)"
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -99,6 +106,10 @@ jobs:
       - name: Stage plugin package
         run: |
           mkdir -p package/CreamDeck
+          # Deliberately an allowlist, not a whole-repo copy: anything the repo
+          # accumulates that isn't one of these (screenshots, tests, CI config,
+          # lockfiles, __pycache__) never makes it into the shipped zip.
+          #
           # package.json MUST be included: decky-loader's backend only picks the
           # modern ESMODULE_V1 load path (dynamic import(), supports the `export`
           # statement our rollup bundle ends with) when it finds a package.json
@@ -122,7 +133,7 @@ jobs:
           tag_name: ${{ steps.vars.outputs.tag }}
           name: CreamDeck ${{ steps.vars.outputs.tag }}
           body: |
-            CreamDeck build from commit `${{ steps.release_commit.outputs.sha }}`.
+            ${{ inputs.notes || format('Routine build from commit `{0}`, no functional changes called out.', steps.release_commit.outputs.sha) }}
 
             Install via Decky Loader's "Install from ZIP" option, or extract
             `CreamDeck.${{ steps.vars.outputs.tag }}.zip` into your Decky plugins directory.
