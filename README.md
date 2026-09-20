@@ -74,7 +74,7 @@ Confirmed working: game launches clean, DLC shows unlocked in-game, survives a l
 ### Street Fighter 6
 
 1. Open the game's CreamDeck page, pick **SmokeAPI**.
-2. Enable **Use a proxy DLL**, pick a DLL, then click **Set launch option for `<dll>`.dll** (see [Proxy mode](#proxy-mode)) — required on Proton or the unlock silently never applies.
+2. Enable **Use a proxy DLL**, pick **version.dll**, then click **Set launch option for version.dll** (see [Proxy mode](#proxy-mode)) — required on Proton or the unlock silently never applies.
 3. Check the DLC you want unlocked and click **Install**.
 4. Fully close and relaunch the game (a launch-options change only takes effect on a fresh launch).
 
