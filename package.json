@@ -6,7 +6,8 @@
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c -w",
-    "dev": "bash scripts/dev.sh",
+    "dev": "node scripts/dev.mjs",
+    "test:tooling": "node --test tests/tooling/*.test.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

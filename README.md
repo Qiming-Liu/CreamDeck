@@ -20,9 +20,14 @@ CreamDeck is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
 
 1. In your game library, right-click any installed game.
 2. Choose **CreamDeck** from the context menu.
-3. Pick an unlocker — CreamDeck flags which ones it detected a target file for in that game's install directory, but you can pick any of them.
-4. For unlockers with a DLC list (see the table below), check/uncheck which DLC to unlock.
-5. Click **Install**. To change anything afterwards, **Uninstall** first, then reconfigure and install again.
+3. Open **Installation** to choose an unlocker and install method. CreamDeck shows whether the target file was detected in the game's directory.
+4. Open **DLC** to select content, search by name or ID, or show only selected DLC. Bulk actions apply to the current search/filter results.
+5. Click **Install** in the top action bar. Later DLC changes use **Apply changes**; to change the unlocker or install method, uninstall from **Maintenance** first.
+
+New installations default to **SmokeAPI + proxy mode + version.dll**, the combination
+tested with **Risk of Rain 2**. In Installation, enable the **Proton launch option** switch to add
+`WINEDLLOVERRIDES="version=n,b" %command%` while preserving existing launch options.
+Saved configurations for existing installations are kept.
 
 > [!NOTE]
 > An unlocker only spoofs the platform's *ownership check* — it does not download DLC content. If a DLC's actual files were never downloaded (because your account doesn't own it), unlocking it will make the game think it owns content it can't actually load, which can crash on launch. This does **not** apply to every DLC on every game, though: some games (Risk of Rain 2 among them — see [Tested games](#tested-games)) ship all DLC content in the base install for everyone, specifically so mixed-ownership multiplayer lobbies work — for those, a full **Verify integrity of game files** in the client (see [Troubleshooting](#troubleshooting)) is enough to have the content locally even without owning it.
@@ -49,7 +54,7 @@ SmokeAPI and CreamAPI target the exact same file — they're alternatives, not b
 SmokeAPI, CreamAPI, and Koaloader can install as a proxy DLL instead of replacing the unlocker's target file directly — useful if a game doesn't get along with a direct replacement, and the only mode that survives a **Verify integrity of game files** (see [Troubleshooting](#troubleshooting)). Toggle **Use a proxy DLL** on the game's CreamDeck page and pick a filename.
 
 > [!IMPORTANT]
-> Proxy mode needs one extra step that's specific to Proton: Wine ships its own built-in `winmm.dll`/`version.dll`/`winhttp.dll` and prefers those over the one CreamDeck drops into the game folder, so **the unlocker's hook silently never runs** unless this game's launch options tell Proton to prefer the dropped-in file (`WINEDLLOVERRIDES="<dll>=n,b" %command%`). The symptom is the game launching fine with DLC still locked, no error at all. CreamDeck's Proxy mode section has a **Set launch option for `<dll>`.dll** button that reads and updates this game's launch options for you (via the client's own app-management API) without disturbing anything else already set there — you still need to fully close and relaunch the game afterward for it to take effect.
+> Proxy mode needs one extra step that's specific to Proton: Wine ships its own built-in `winmm.dll`/`version.dll`/`winhttp.dll` and prefers those over the one CreamDeck drops into the game folder, so **the unlocker's hook silently never runs** unless this game's launch options tell Proton to prefer the dropped-in file (`WINEDLLOVERRIDES="<dll>=n,b" %command%`). The symptom is the game launching fine with DLC still locked, no error at all. CreamDeck's Installation page has a **Proton launch option** switch that reflects the current Steam setting. Turning it on adds the selected DLL override; turning it off removes only that DLL's override while preserving other DLL rules and launch arguments — you still need to fully close and relaunch the game afterward for it to take effect.
 
 ## Scope
 
@@ -64,7 +69,7 @@ CreamDeck v1 only covers **games running through Proton, installed via the one s
 ### Risk of Rain 2
 
 1. Open the game's CreamDeck page, pick **SmokeAPI**.
-2. Enable **Use a proxy DLL**, pick `version`, then click **Set launch option for version.dll** (see [Proxy mode](#proxy-mode)) — required on Proton or the unlock silently never applies.
+2. Enable **Use a proxy DLL**, pick `version`, then enable **Proton launch option** (see [Proxy mode](#proxy-mode)) — required on Proton or the unlock silently never applies.
 3. If you haven't already, run **Verify integrity of game files** once before installing — Risk of Rain 2 ships all DLC content in the base install for everyone, so this alone is enough to have it locally even without owning it (see the note in [Usage](#usage)).
 4. Check the DLC you want unlocked and click **Install**.
 5. Fully close and relaunch the game (a launch-options change only takes effect on a fresh launch).
@@ -74,7 +79,7 @@ Confirmed working: game launches clean, DLC shows unlocked in-game, survives a l
 ### Street Fighter 6
 
 1. Open the game's CreamDeck page, pick **SmokeAPI**.
-2. Enable **Use a proxy DLL**, pick **version.dll**, then click **Set launch option for version.dll** (see [Proxy mode](#proxy-mode)) — required on Proton or the unlock silently never applies.
+2. Enable **Use a proxy DLL**, pick **version.dll**, then enable **Proton launch option** (see [Proxy mode](#proxy-mode)) — required on Proton or the unlock silently never applies.
 3. Check the DLC you want unlocked and click **Install**.
 4. Fully close and relaunch the game (a launch-options change only takes effect on a fresh launch).
 
@@ -82,7 +87,7 @@ Confirmed working: game launches clean, DLC unlocked in-game.
 
 ## Troubleshooting
 
-- **Game launches fine but DLC is still locked, no error shown** — almost always the Proton/WINEDLLOVERRIDES issue described in [Proxy mode](#proxy-mode) above, if you're using proxy mode. Use the **Set launch option** button on the game's CreamDeck page, then fully close and relaunch the game.
+- **Game launches fine but DLC is still locked, no error shown** — almost always the Proton/WINEDLLOVERRIDES issue described in [Proxy mode](#proxy-mode) above, if you're using proxy mode. Enable the **Proton launch option** switch on the game's Installation page, then fully close and relaunch the game.
 - **Game crashes on launch after installing** — check whether the DLC you enabled actually has its content downloaded (see the note in [Usage](#usage)); if so, disable that DLC and try again with just the ones whose content you know is present.
 - **"Integrity check failed" banner** — CreamDeck's saved record of what's installed doesn't match what's actually on this game's files. This is expected after a **Verify integrity of game files** restores a direct-replace install's original DLL (the client has no reason to also clean up the unlocker's leftover config file, so CreamDeck still sees it and gets confused) — CreamDeck resolves this on its own when it can tell for certain nothing's installed anymore. If it can't (files show something *different* from what CreamDeck expects), use the **Remove all unlocker files** button on that banner to reset cleanly, then reinstall.
 - **After Verify integrity**, a direct-replace (non-proxy) install is always undone — the client restores the original DLL as part of verifying, same as after most game updates. Reinstall through CreamDeck afterward, or switch to Proxy mode with the launch option set so it survives future verifies/updates.
@@ -101,15 +106,23 @@ pnpm run build
 python -m unittest discover -s tests -v
 ```
 
-### Live testing on a Deck
+### Live testing in a VM or on a Deck
 
-`scripts/dev.sh` turns this Deck into its own live test device: it symlinks `dist/`, `py_modules/`, and `main.py` from the plugin's installed location back into this repo, and runs a `rollup -c -w` watcher alongside a background poller that restarts `plugin_loader` automatically once backend changes settle (neither the frontend nor the backend reliably hot-reload an already-open plugin page here on their own). Needs `sudo` once at startup, kept alive for the rest of the session.
+`scripts/dev.mjs` builds locally and synchronizes the plugin over SSH to a SteamOS
+VM or Deck. Copy `.env.example` to `.env`, configure SSH key login, then run:
 
 ```bash
 pnpm dev
 ```
 
-Ctrl+C restores the normal (non-symlinked) install and turns the restart-on-save behavior back off.
+The remote session asks for sudo once if needed, backs up the installed runtime,
+links it to a source mirror under `/tmp`, and enables Decky's `LIVE_RELOAD`.
+Edits rebuild and synchronize automatically; backend changes restart Decky, and
+frontend changes request a plugin reload. Ctrl+C restores the normal install.
+An already-open game page may need reopening after a reload.
+
+See [`scripts/DEV.md`](scripts/DEV.md) for host/guest requirements, connection
+settings, cleanup behavior, and verification commands.
 
 ## Acknowledgments
 

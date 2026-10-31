@@ -46,26 +46,24 @@ the game's files, not CreamDeck's own actions.
 
 ## On-device testing
 
-This plugin only makes sense tested live in Big Picture / Game Mode — there is
-no meaningful way to exercise the actual install flow otherwise. `scripts/dev.sh`
-(`pnpm dev`) symlinks `dist/`, `py_modules/`, and `main.py` from the installed
-plugin location back into this repo and watches for changes:
+This plugin needs live Big Picture / Game Mode testing to verify its install flow.
+See `scripts/DEV.md`. `pnpm dev` runs a dependency-free Node host watcher that builds
+locally and synchronizes runtime files over SSH. `scripts/dev-session.sh` owns the
+remote sudo TTY, installed-file backups, symlinks, LIVE_RELOAD override, and cleanup.
+The guest source mirror is `/tmp/creamdeck-dev-<uid>`; resources are synchronized
+alongside Python and frontend files. Connection settings live in ignored `.env`;
+keys/cache may live in ignored `.decky-dev/`. Never store passwords there.
 
-- **Frontend** (`dist/index.js`): relies on Decky's `LIVE_RELOAD` (a systemd
-  env var the script sets). This does *not* reliably hot-swap an
-  already-mounted page's JS — see Gotchas.
-- **Backend** (`main.py`/`py_modules/*.py`): does **not** hot-reload at all
-  here, despite what an earlier version of this script's own comment claimed.
-  `dev.sh` restarts `plugin_loader` automatically, debounced 10s after the
-  last backend edit settles (so a burst of saves triggers one restart, not
-  one per save).
+Edits are debounced for one second. The guest uses rsync to keep the mirror stable,
+including deletion propagation. Backend/metadata/resource changes restart Decky;
+frontend uploads touch the installed `main.py` symlink to request native plugin
+reload. After startup/restarts the session waits eleven seconds for Decky's watcher.
+An already-mounted page can require reopening. Ctrl+C, SSH disconnection, or an
+expired host heartbeat restores the installed runtime and removes this override.
 
-`dev.sh` needs `sudo` once at startup (kept alive in the background for the
-session) since `~/homebrew/plugins/CreamDeck/` is root-owned. If you (the
-agent) don't have a way to enter the user's sudo password non-interactively,
-you can't restart `plugin_loader` yourself — ask the user to run
-`sudo systemctl restart plugin_loader`, or better, tell them to have `pnpm dev`
-running so it happens automatically.
+The remote session may ask for sudo at startup. If no non-interactive sudo access
+is available, have the user run `pnpm dev` in an interactive terminal. Do not put
+passwords in scripts or configuration. Restart the session after script edits.
 
 ### Verifying a UI change without asking the user for a screenshot every time
 
