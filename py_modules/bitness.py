@@ -1,5 +1,5 @@
 """
-Shared 32/64-bit heuristic used by smokeapi.py, creamapi.py and koaloader.py:
+Shared 32/64-bit heuristic used by smokeapi.py and creamapi.py:
 no PE header parsing, just "does this game directory have a steam_api64.dll
 (or a backup of one)". Defaults to 64-bit when there's no signal either way,
 since that covers the overwhelming majority of current games.

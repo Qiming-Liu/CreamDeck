@@ -11,11 +11,7 @@ from __future__ import annotations
 import os
 
 import creamapi
-import koaloader
-import screamapi
 import smokeapi
-import uplay_r1
-import uplay_r2
 
 
 def _steamworks_marker_present(directory: str) -> bool:
@@ -26,32 +22,18 @@ def _steamworks_marker_present(directory: str) -> bool:
 
 
 UNLOCKERS = [
-    {"key": "smokeapi", "label": "SmokeAPI", "supports_dlc_list": True},
-    {"key": "creamapi", "label": "CreamAPI", "supports_dlc_list": True},
-    {"key": "screamapi", "label": "ScreamAPI", "supports_dlc_list": False},
-    {"key": "uplay_r1", "label": "Uplay R1 Unlocker", "supports_dlc_list": False},
-    {"key": "uplay_r2", "label": "Uplay R2 Unlocker", "supports_dlc_list": False},
-    {"key": "koaloader", "label": "Koaloader (proxy)", "supports_dlc_list": True},
+    {"key": "smokeapi", "label": "SmokeAPI"},
+    {"key": "creamapi", "label": "CreamAPI"},
 ]
 
 _DETECTORS = {
     "smokeapi": _steamworks_marker_present,
     "creamapi": _steamworks_marker_present,
-    "screamapi": screamapi.detected,
-    "uplay_r1": uplay_r1.detected,
-    "uplay_r2": uplay_r2.detected,
-    # Koaloader isn't "detected" by a marker file of its own — it's an alternative
-    # way to install the others, always offered.
-    "koaloader": lambda _directory: False,
 }
 
 _INSTALLED_CHECKS = {
     "smokeapi": smokeapi.is_installed,
     "creamapi": creamapi.is_installed,
-    "screamapi": screamapi.is_installed,
-    "uplay_r1": uplay_r1.is_installed,
-    "uplay_r2": uplay_r2.is_installed,
-    "koaloader": koaloader.is_installed,
 }
 
 
@@ -99,14 +81,6 @@ async def uninstall_active(directory: str) -> None:
             await creamapi.proxy_uninstall(directory)
         else:
             await creamapi.uninstall(directory)
-    elif installed == "screamapi":
-        await screamapi.uninstall(directory)
-    elif installed == "uplay_r1":
-        await uplay_r1.uninstall(directory)
-    elif installed == "uplay_r2":
-        await uplay_r2.uninstall(directory)
-    elif installed == "koaloader":
-        await koaloader.uninstall(directory)
 
 
 async def force_cleanup(directory: str) -> None:
@@ -123,8 +97,7 @@ async def force_cleanup(directory: str) -> None:
     ...) since it has no idea those exist — leaving them behind is what makes
     currently_installed() keep reporting something's installed after a verify.
     """
-    for module in (smokeapi, creamapi, screamapi, uplay_r1, uplay_r2):
+    for module in (smokeapi, creamapi):
         await module.uninstall(directory)
     await smokeapi.proxy_uninstall(directory)
     await creamapi.proxy_uninstall(directory)
-    await koaloader.uninstall(directory)

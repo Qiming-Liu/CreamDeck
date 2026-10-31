@@ -5,7 +5,7 @@
   "api_version": 1,
   "publish": {
     "tags": ["dlc", "steam", "root"],
-    "description": "Select an installed Steam game from its library context menu and unlock its DLC (SmokeAPI/CreamAPI/ScreamAPI/Uplay R1&R2/Koaloader), directly on the Steam Deck.",
+    "description": "Select an installed Steam game from its library context menu and unlock its DLC (SmokeAPI/CreamAPI), directly on the Steam Deck.",
     "image": ""
   }
 }

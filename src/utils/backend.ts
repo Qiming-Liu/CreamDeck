@@ -11,7 +11,6 @@ export interface DlcInfo {
 export interface UnlockerInfo {
   key: string;
   label: string;
-  supports_dlc_list: boolean;
   detected: boolean;
   installed: boolean;
 }
@@ -26,16 +25,34 @@ export interface GamePage {
   installed?: boolean;
   proxy_dll?: string | null;
   proxy_dll_choices?: string[];
-  koaloader_autoload?: string[];
   integrity_error?: string | null;
+  error_code?: string;
+  file_status?: "clean" | "healthy" | "modified" | "external" | "legacy";
+  changed_files?: string[];
+  target_directory?: string;
+  targets?: { path: string; bitness: number; detected: boolean }[];
+  resource_version?: string;
+  dlc_updated_at?: number;
+  dlc_cached?: boolean;
 }
 
 export interface OperationResult {
   success: boolean;
   error?: string;
+  error_code?: string;
+  preserved_files?: string[];
+  bitness?: number;
 }
 
-export const getGamePage = callable<[app_id: string], GamePage>("get_game_page");
+export const getGamePage = callable<[app_id: string, target_directory?: string], GamePage>("get_game_page");
+export interface DlcPage extends OperationResult {
+  dlcs?: DlcInfo[];
+  updated_at?: number;
+  cached?: boolean;
+}
+export const getDlcPage = callable<[app_id: string, force: boolean], DlcPage>("get_dlc_page");
+export const diagnoseInstall = callable<[app_id: string, unlocker: string, proxy: boolean, proxy_dll: string,
+  target_directory: string], OperationResult>("diagnose_install");
 
 export const installDlcUnlocker = callable<
   [
@@ -44,7 +61,7 @@ export const installDlcUnlocker = callable<
     enabled_dlc_ids: string[],
     proxy: boolean,
     proxy_dll: string,
-    koaloader_autoload: string[],
+    target_directory: string,
   ],
   OperationResult
 >("install_dlc_unlocker");

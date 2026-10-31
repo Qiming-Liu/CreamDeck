@@ -2,7 +2,7 @@ import { DialogButton, Focusable, TextField, Toggle } from "@decky/ui";
 import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { buttonStyle, GameRow, Help, RowLabel, secondaryStyle } from "../components/GameRow";
-import { Configuration, filterDlcs, selectVisible, supportsDlcList } from "../domain/gamePage";
+import { Configuration, filterDlcs, selectVisible } from "../domain/gamePage";
 import type { DlcInfo } from "../utils/backend";
 import { useTranslations } from "../utils/i18n";
 
@@ -23,10 +23,6 @@ export default function DlcPanel({ dlcs, config, onChange, disabled }: Props) {
   const count = dlcs.filter(dlc => selected.has(dlc.id)).length;
   const filtered = !!query.trim() || selectedOnly;
   const batch = (checked: boolean) => onChange(previous => ({ ...previous, enabledIds: selectVisible(previous.enabledIds, visible, checked) }));
-
-  if (!supportsDlcList(config)) return <GameRow><RowLabel description={config.unlocker === "koaloader" ? t.koaloaderDlcHint : t.unlockAllHint}>
-    {config.unlocker === "koaloader" ? t.noDlcSelection : t.unlockAll}
-  </RowLabel></GameRow>;
 
   return <Focusable flow-children="column">
     <style>{".creamdeck-search .DialogInputLabelGroup { margin-bottom: 0; }"}</style>

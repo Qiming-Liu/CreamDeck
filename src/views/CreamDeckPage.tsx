@@ -1,11 +1,12 @@
 import { ConfirmModal, DialogButton, Focusable, Router, SidebarNavigation, showModal, Spinner } from "@decky/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { FaListUl, FaSlidersH, FaWrench } from "react-icons/fa";
 import { buttonStyle, secondaryStyle } from "../components/GameRow";
-import { sameIds, supportsDlcList } from "../domain/gamePage";
+import { proxyChoices, sameIds } from "../domain/gamePage";
 import { useGamePage } from "../hooks/useGamePage";
-import { forceCleanup, installDlcUnlocker, uninstallDlcUnlocker } from "../utils/backend";
+import { diagnoseInstall, forceCleanup, installDlcUnlocker, uninstallDlcUnlocker } from "../utils/backend";
+import { useWineDllOverride } from "../hooks/useWineDllOverride";
 import { useTranslations } from "../utils/i18n";
 import DlcPanel from "./DlcPanel";
 import InstallPanel from "./InstallPanel";
@@ -20,17 +21,31 @@ const SIDEBAR_CONTENT_TOP_INSET = 40;
 export default function CreamDeckPage() {
   const t = useTranslations();
   const appId = window.location.pathname.match(/\/creamdeck\/(\d+)/)?.[1] ?? null;
-  const { page, draft, setDraft, loading, busy, error, notice, needsRefresh, load, action } = useGamePage(appId, t.loadFailed);
+  const { page, draft, setDraft, loading, busy, error, notice, needsRefresh, preserved,
+    dlcLoading, dlcError, loadDlcs, load, action } = useGamePage(appId, t.operationError);
   const [launchBusy, setLaunchBusy] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnosis, setDiagnosis] = useState("");
+  const launch = useWineDllOverride(Number(appId), draft.proxyDll, !!page?.found && draft.proxy && proxyChoices(draft.unlocker).length > 0, setLaunchBusy);
+  useEffect(() => { setDiagnosis(""); }, [draft.unlocker, draft.proxy, draft.proxyDll, page?.target_directory]);
   const route = `/creamdeck/${appId}`;
   const installed = !!page?.installed;
-  const blocked = busy || launchBusy || loading || needsRefresh;
-  const dirty = installed && supportsDlcList(draft) && !sameIds(draft.enabledIds, page?.enabled_dlc_ids ?? []);
+  const blocked = busy || launchBusy || diagnosing || loading || needsRefresh;
+  const dirty = installed && !sameIds(draft.enabledIds, page?.enabled_dlc_ids ?? []);
   const label = page?.unlockers?.find(u => u.key === draft.unlocker)?.label ?? draft.unlocker;
 
   const install = () => {
     if (!appId) return;
-    void action(() => installDlcUnlocker(appId, draft.unlocker, draft.enabledIds, draft.proxy, draft.proxyDll, draft.autoload), t.installSuccess, t.refreshFailed);
+    void action(() => installDlcUnlocker(appId, draft.unlocker, draft.enabledIds, draft.proxy, draft.proxyDll, page?.target_directory ?? "."), t.installSuccess, t.refreshFailed);
+  };
+  const diagnose = async () => {
+    if (!appId || blocked) return;
+    setDiagnosing(true); setDiagnosis("");
+    try {
+      const result = await diagnoseInstall(appId, draft.unlocker, draft.proxy, draft.proxyDll, page?.target_directory ?? ".");
+      setDiagnosis(result.success ? t.diagnosisReady(result.bitness ?? 64) : t.operationError(result.error_code));
+    } catch { setDiagnosis(t.operationError()); }
+    finally { setDiagnosing(false); }
   };
   const confirm = (cleanup: boolean) => {
     if (!appId) return;
@@ -45,10 +60,13 @@ export default function CreamDeckPage() {
       <div style={{ flex: "1 1 0", minWidth: 0 }}>
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: "0 0 5px", overflowWrap: "anywhere" }}>{page?.name || "CreamDeck"}</h2>
         <div role="status" style={{ fontSize: 12, color: page?.integrity_error ? "#f0bd73" : dirty ? "#73c6f4" : "#aeb7c5" }}>
-          {page?.integrity_error ? t.integrityTitle : installed ? `${t.installed} · ${label}${dirty ? ` · ${t.unsaved}` : ""}` : t.notInstalled}
+          {page?.file_status === "external" ? t.filesExternal : page?.file_status === "legacy" ? t.filesLegacy : page?.integrity_error ? t.filesModified : installed ? `${t.filesHealthy} · ${label}${dirty ? ` · ${t.unsaved}` : ""}` : t.notInstalled}
         </div>
+        {installed && draft.proxy && <div role="status" style={{ fontSize: 12, marginTop: 4, color: launch.enabled ? "#9bd9ae" : "#f0bd73" }}>
+          {launch.loading ? t.launchChecking : launch.enabled ? t.launchReady : t.launchRequired}
+        </div>}
       </div>
-      {page?.found && <DialogButton style={buttonStyle} disabled={blocked || !!page.integrity_error || (installed && !dirty)} onClick={install}>
+      {page?.found && <DialogButton style={buttonStyle} disabled={blocked || !!page.integrity_error || !page.dlc_cached || (installed && !dirty)} onClick={install}>
         {busy ? t.working : installed ? dirty ? t.applyChanges : t.applied : t.install}
       </DialogButton>}
     </Focusable>
@@ -60,6 +78,7 @@ export default function CreamDeckPage() {
       <DialogButton style={buttonStyle} disabled={busy || launchBusy} onClick={() => { void load(); }}>{t.retry}</DialogButton>
     </Focusable>}
     {notice && <div role="status" style={{ ...secondaryStyle, color: "#9bd9ae", marginTop: 10 }}>{notice}</div>}
+    {preserved.length > 0 && <div role="status" style={{ ...secondaryStyle, color: "#f0bd73", marginTop: 8 }}>{t.preservedFiles}: {preserved.join(", ")}</div>}
   </div>;
 
   const content = (children: ReactNode) => <Focusable className="creamdeck-content" flow-children="column" style={{
@@ -79,10 +98,18 @@ export default function CreamDeckPage() {
     paddingBottom: PAGE_BOTTOM_OFFSET, boxSizing: "border-box" }}>
     <SidebarNavigation title="CreamDeck" showTitle disableRouteReporting pages={[
       { identifier: "dlc", route: `${route}/dlc`, title: t.dlcManagement, padding: "none", hideTitle: true, icon: <FaListUl />, content: content(
-        <DlcPanel dlcs={page?.dlcs ?? []} config={draft} onChange={setDraft} disabled={blocked} />) },
+        <>
+          <Focusable flow-children="row" style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 10 }}>
+            <div role="status" style={{ ...secondaryStyle, flex: 1 }}>{dlcLoading ? t.refreshingDlc : page?.dlc_updated_at ? t.cachedAt(new Date(page.dlc_updated_at * 1000).toLocaleString()) : t.catalogMissing}</div>
+            <DialogButton style={buttonStyle} disabled={dlcLoading || blocked} onClick={() => { void loadDlcs(true); }}>{t.refreshDlc}</DialogButton>
+          </Focusable>
+          {dlcError && <div role="alert" style={{ ...secondaryStyle, color: "#f0bd73", marginBottom: 12 }}>{dlcError}</div>}
+          <DlcPanel dlcs={page?.dlcs ?? []} config={draft} onChange={setDraft} disabled={blocked} />
+        </>) },
       { identifier: "install", route: `${route}/install`, title: t.installSettings, padding: "none", hideTitle: true, icon: <FaSlidersH />, content: content(
-        <InstallPanel appId={appId ?? ""} config={draft} onChange={setDraft} unlockers={page?.unlockers ?? []}
-          installed={installed} disabled={blocked} onLaunchBusy={setLaunchBusy} />) },
+        <InstallPanel config={draft} onChange={setDraft} unlockers={page?.unlockers ?? []}
+          installed={installed} disabled={blocked} page={page} onTarget={directory => { void load(directory); }}
+          launch={launch} diagnosis={diagnosis} onDiagnose={() => { void diagnose(); }} />) },
       { identifier: "maintenance", route: `${route}/maintenance`, title: t.maintenance, padding: "none", hideTitle: true, icon: <FaWrench />, content: content(
         <MaintenancePanel page={page} config={draft} disabled={blocked} onUninstall={() => confirm(false)} onCleanup={() => confirm(true)} />) },
     ]} />

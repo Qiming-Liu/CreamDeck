@@ -17,6 +17,7 @@ import json
 import os
 import subprocess
 import tarfile
+import time
 import urllib.request
 from typing import Optional, TypedDict
 
@@ -25,6 +26,7 @@ import steam_store_api
 import steamcmd_webapi
 from helpers import get_ssl_context  # type: ignore
 from vdf_lite import get_child, parse
+from atomic_json import write_json
 
 LINUX_STEAMCMD_URL = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
 
@@ -54,7 +56,7 @@ async def ensure_installed() -> None:
     def _download_and_extract() -> None:
         os.makedirs(_steamcmd_dir(), exist_ok=True)
         archive_path = os.path.join(_steamcmd_dir(), "steamcmd_linux.tar.gz")
-        with urllib.request.urlopen(LINUX_STEAMCMD_URL, context=get_ssl_context()) as response:
+        with urllib.request.urlopen(LINUX_STEAMCMD_URL, timeout=15, context=get_ssl_context()) as response:
             with open(archive_path, "wb") as f:
                 f.write(response.read())
         with tarfile.open(archive_path) as tar:
@@ -82,7 +84,7 @@ async def _run_app_info_print(app_id: str) -> str:
             cwd=_steamcmd_dir(),
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=20,
         )
         output = process.stdout or ""
         open_bracket = output.find("{")
@@ -111,6 +113,8 @@ class AppInfo(TypedDict):
     app_id: str
     name: str
     dlcs: list[DlcInfo]
+    updated_at: float
+    stale: bool
 
 
 def _vdf_cache_path(app_id: str) -> str:
@@ -256,8 +260,10 @@ async def _dlc_name(dlc_id: str) -> str:
 
 async def get_app_info(app_id: str, branch: str = "public", build_id: int = 0) -> Optional[AppInfo]:
     app_data = await steamcmd_webapi.query(app_id)
+    source_cache = os.path.join(_appinfo_cache_dir(), f"{app_id}.cmd.json")
     if app_data is None:
         app_data = await _get_app_data_from_local_cmd(app_id, branch, build_id)
+        source_cache = _vdf_cache_path(app_id)
     if app_data is None:
         return None
 
@@ -267,6 +273,7 @@ async def get_app_info(app_id: str, branch: str = "public", build_id: int = 0) -
     depots = get_child(app_data, "depots")
     depot_data_available = isinstance(depots, dict) and len(depots) > 0
     depot_dlc_ids = _dlc_ids_with_depot(app_data) if depot_data_available else set()
+    updated_at = os.path.getmtime(source_cache) if os.path.isfile(source_cache) else time.time()
 
     if not dlc_ids:
         # The web API's anonymous-login response is often missing depots/extended
@@ -274,16 +281,72 @@ async def get_app_info(app_id: str, branch: str = "public", build_id: int = 0) -
         # name — the store page's DLC list is public data that doesn't need that.
         # That also means depot data is unavailable for these ids (has_depot=None).
         store_dlc_ids = await steam_store_api.get_dlc_ids(app_id)
+        if store_dlc_ids is None:
+            # Missing data is not a confirmed empty list. Keep the last catalog.
+            return None
         if store_dlc_ids:
             dlc_ids = set(store_dlc_ids)
             depot_data_available = False
+        store_cache = steam_store_api._cache_path(app_id)
+        if os.path.isfile(store_cache):
+            updated_at = min(updated_at, os.path.getmtime(store_cache))
 
-    dlcs = [
-        DlcInfo(
+    limit = asyncio.Semaphore(4)
+
+    async def describe(dlc_id):
+        async with limit:
+            return DlcInfo(
             id=dlc_id,
             name=await _dlc_name(dlc_id),
             has_depot=(dlc_id in depot_dlc_ids) if depot_data_available else None,
         )
-        for dlc_id in sorted(dlc_ids, key=int)
-    ]
-    return AppInfo(app_id=app_id, name=name, dlcs=dlcs)
+    dlcs = await asyncio.gather(*(describe(i) for i in sorted(dlc_ids, key=int)))
+    return AppInfo(app_id=app_id, name=name, dlcs=dlcs, updated_at=updated_at,
+                   stale=time.time() - updated_at >= 600)
+
+
+def cached_page(app_id: str) -> dict:
+    if not app_id.isdigit():
+        return {}
+    try:
+        with open(os.path.join(_appinfo_cache_dir(), f"{app_id}.page.json"), encoding="utf-8") as source:
+            value = json.load(source)
+        if not isinstance(value, dict) or not isinstance(value.get("dlcs"), list) or not isinstance(value.get("updated_at"), (int, float)):
+            return {}
+        if any(not isinstance(d, dict) or not isinstance(d.get("id"), str) or not isinstance(d.get("name"), str)
+               or d.get("has_depot") not in (True, False, None) for d in value["dlcs"]):
+            return {}
+        return value
+    except (OSError, ValueError):
+        return {}
+
+
+_queries: dict[str, asyncio.Task] = {}
+
+
+async def get_page(app_id: str, branch: str, build_id: int, force: bool = False) -> dict:
+    cached = cached_page(app_id)
+    if cached and not force and time.time() - cached["updated_at"] < 600:
+        return {"success": True, **cached, "cached": True}
+
+    async def fetch():
+        try:
+            info = await asyncio.wait_for(get_app_info(app_id, branch, build_id), timeout=25)
+            if info is None:
+                raise ValueError("No app information")
+            page = {"dlcs": info["dlcs"], "updated_at": info.get("updated_at", time.time())}
+            write_json(os.path.join(_appinfo_cache_dir(), f"{app_id}.page.json"), page)
+            stale = info.get("stale", False)
+            return {"success": not stale, **page, "cached": stale,
+                    **({"error_code": "catalog_unavailable"} if stale else {})}
+        except Exception as error:
+            decky.logger.warning(f"DLC refresh failed for {app_id}: {error}")
+            return {"success": False, **cached_page(app_id), "cached": bool(cached_page(app_id)), "error_code": "catalog_unavailable"}
+
+    # Reopening a page must not start another identical network fallback chain.
+    task = _queries.get(app_id)
+    if task is None or task.done():
+        task = asyncio.create_task(fetch())
+        _queries[app_id] = task
+        task.add_done_callback(lambda done: _queries.pop(app_id, None) if _queries.get(app_id) is done else None)
+    return await asyncio.shield(task)

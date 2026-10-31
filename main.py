@@ -1,222 +1,179 @@
 from __future__ import annotations
-
+import asyncio
 import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "py_modules"))
 
 import action_log
-import creamapi
 import decky
+import install_manager as manager
 import install_state
-import koaloader
-import screamapi
-import smokeapi
 import steam_library
 import steamcmd
 import unlocker_detection
-import uplay_r1
-import uplay_r2
 
-_UNLOCKER_LABELS = {
-    "smokeapi": "SmokeAPI",
-    "creamapi": "CreamAPI",
-    "screamapi": "ScreamAPI",
-    "uplay_r1": "Uplay R1 Unlocker",
-    "uplay_r2": "Uplay R2 Unlocker",
-    "koaloader": "Koaloader",
-}
+
+def failure(error):
+    action_log.log_warning(f"Operation failed: {error!r}")
+    return {"success": False, "error_code": error.code if isinstance(error, manager.OperationError) else "operation_failed"}
+
+
+def locate(app_id, relative=None):
+    if not isinstance(app_id, str) or not app_id.isdigit():
+        raise manager.OperationError("game_not_found")
+    game = steam_library.find_game(app_id)
+    if game is None:
+        raise manager.OperationError("game_not_found")
+    state = install_state.get_state(app_id)
+    if state and state["installed"] and state["unlocker"] not in manager.MODULES:
+        raise manager.OperationError("unsupported_install")
+    selected = relative if relative is not None else (state or {}).get("target_directory", ".") or "."
+    directory = manager.target(game["game_directory"], selected)
+    manager.recover(directory)
+    state = install_state.get_state(app_id)
+    if state and state["installed"] and state["unlocker"] not in manager.MODULES:
+        raise manager.OperationError("unsupported_install")
+    return game, directory, state, selected
 
 
 class Plugin:
     @action_log.log_call
-    async def get_game_page(self, app_id: str):
-        """Everything the per-game page (/creamdeck/<appid>) needs in one call."""
-        game = steam_library.find_game(app_id)
-        if game is None:
-            return {"found": False}
-        directory = game["game_directory"]
-
-        app_info = await steamcmd.get_app_info(app_id, game["branch"], game["build_id"])
-        dlcs = app_info["dlcs"] if app_info else []
-
-        unlockers = unlocker_detection.describe(directory)
-        disk_installed = unlocker_detection.currently_installed(directory)
-
-        state = install_state.get_state(app_id)
-        json_installed = state["unlocker"] if state and state["installed"] else None
-
-        integrity_error = None
-        if json_installed != disk_installed:
-            if disk_installed is None:
-                # Unambiguous: the game's files no longer show anything installed at
-                # all (Steam's "verify integrity" restores the original DLL, which is
-                # exactly this case) — nothing to ask the user to check, just correct
-                # our own now-stale record to match reality.
-                install_state.mark_uninstalled(app_id)
-                action_log.log_event(
-                    f"[{app_id}] install-state self-healed: json said {json_installed} but "
-                    f"disk shows nothing (game files were verified/restored) — cleared"
-                )
-                json_installed = None
-            else:
-                json_label = _UNLOCKER_LABELS.get(json_installed, "nothing")
-                disk_label = _UNLOCKER_LABELS.get(disk_installed, "nothing")
-                integrity_error = (
-                    f"CreamDeck's saved state says {json_label} is installed, but this game's "
-                    f"files show {disk_label} — please verify this game's file integrity in "
-                    f"Steam before installing or uninstalling anything."
-                )
-                action_log.log_warning(
-                    f"[{app_id}] install-state mismatch: json={json_installed} disk={disk_installed}"
-                )
-
-        installed_unlocker = json_installed
-        selected_unlocker = installed_unlocker or unlocker_detection.recommended_default(directory)
-
-        enabled_dlc_ids = state["enabled_dlc_ids"] if state else []
-        proxy_dll = state["proxy_dll"] if state and state["proxy"] else None
-        koaloader_autoload = state["koaloader_autoload"] if state else []
-
-        if selected_unlocker in ("smokeapi", "creamapi"):
-            proxy_dll_choices = (smokeapi if selected_unlocker == "smokeapi" else creamapi).PROXY_DLL_NAMES
-        elif selected_unlocker == "koaloader":
-            proxy_dll_choices = koaloader.PROXY_DLL_NAMES
-        else:
-            proxy_dll_choices = []
-
-        return {
-            "found": True,
-            "name": game["name"],
-            "dlcs": dlcs,
-            "enabled_dlc_ids": enabled_dlc_ids,
-            "unlockers": unlockers,
-            "selected_unlocker": selected_unlocker,
-            "installed": installed_unlocker is not None,
-            "proxy_dll": proxy_dll,
-            "proxy_dll_choices": proxy_dll_choices,
-            "koaloader_autoload": koaloader_autoload,
-            "integrity_error": integrity_error,
-        }
+    async def get_game_page(self, app_id: str, target_directory: str | None = None):
+        # Local state and maintenance remain available without a network.
+        async with manager.LOCK:
+            try:
+                game, directory, state, relative = locate(app_id, target_directory)
+                options = await asyncio.to_thread(manager.candidates, game["game_directory"])
+                # Discovery can recover a transaction in a nested target too.
+                game, directory, state, relative = locate(app_id, target_directory)
+                status, changed = manager.integrity(directory, state)
+                disk = unlocker_detection.currently_installed(directory)
+                installed = state["unlocker"] if state and state["installed"] else None
+                integrity_error = None
+                if status == "legacy" and disk is None:
+                    install_state.mark_uninstalled(app_id)
+                    installed = None
+                    status = "clean"
+                elif status in ("modified", "external", "legacy"):
+                    labels = {u["key"]: u["label"] for u in unlocker_detection.UNLOCKERS}
+                    integrity_error = f"{labels.get(installed, 'Nothing')} / {labels.get(disk, 'Nothing')}: {', '.join(changed) or status}"
+                catalog = steamcmd.cached_page(app_id)
+                return {
+                    "found": True, "name": game["name"], "dlcs": catalog.get("dlcs", []),
+                    "dlc_updated_at": catalog.get("updated_at"), "dlc_cached": bool(catalog),
+                    "enabled_dlc_ids": state["enabled_dlc_ids"] if state else [],
+                    "unlockers": unlocker_detection.describe(directory),
+                    "selected_unlocker": installed or "smokeapi", "installed": installed is not None,
+                    "proxy_dll": state["proxy_dll"] if state and state["proxy"] else None,
+                    "integrity_error": integrity_error, "file_status": status,
+                    "changed_files": changed, "target_directory": relative, "targets": options,
+                    "resource_version": (state or {}).get("resource_version"),
+                }
+            except Exception as error:
+                return {"found": False, **failure(error)}
 
     @action_log.log_call
-    async def install_dlc_unlocker(
-        self,
-        app_id: str,
-        unlocker: str,
-        enabled_dlc_ids: list[str],
-        proxy: bool = False,
-        proxy_dll: str = "winmm",
-        koaloader_autoload: list[str] | None = None,
-    ):
+    async def get_dlc_page(self, app_id: str, force: bool = False):
         game = steam_library.find_game(app_id)
         if game is None:
-            return {"success": False, "error": "Game not found"}
-        directory = game["game_directory"]
+            return failure(manager.OperationError("game_not_found"))
+        return await steamcmd.get_page(app_id, game["branch"], game["build_id"], force)
 
-        app_info = await steamcmd.get_app_info(app_id, game["branch"], game["build_id"])
-        dlcs = app_info["dlcs"] if app_info else []
-        all_dlc_ids = [dlc["id"] for dlc in dlcs] if dlcs else enabled_dlc_ids
-        enabled_dlcs_with_names = [(d["id"], d["name"]) for d in dlcs if d["id"] in enabled_dlc_ids]
+    @action_log.log_call
+    async def diagnose_install(self, app_id: str, unlocker: str, proxy: bool, proxy_dll: str,
+                               target_directory: str = "."):
+        async with manager.LOCK:
+            try:
+                _, directory, state, _ = locate(app_id, target_directory)
+                result = manager.validate(directory, unlocker, proxy, proxy_dll)
+                status, _ = manager.integrity(directory, state)
+                if status not in ("healthy", "clean"):
+                    raise manager.OperationError("legacy_install" if status == "legacy" else "integrity_conflict")
+                manager.check_collisions(directory, unlocker, proxy, proxy_dll,
+                                         state.get("files", {}) if state and state["installed"] else ())
+                return {"success": True, **result}
+            except Exception as error:
+                return failure(error)
 
-        try:
-            await unlocker_detection.uninstall_active(directory)
+    @action_log.log_call
+    async def install_dlc_unlocker(self, app_id: str, unlocker: str, enabled_dlc_ids: list[str],
+                                   proxy: bool = False, proxy_dll: str = "winmm",
+                                   target_directory: str = "."):
+        async with manager.LOCK:
+            try:
+                _, directory, state, relative = locate(app_id, target_directory)
+                checked = manager.validate(directory, unlocker, proxy, proxy_dll)
+                proxy = checked["proxy"]
+                status, _ = manager.integrity(directory, state)
+                if status not in ("healthy", "clean"):
+                    raise manager.OperationError("legacy_install" if status == "legacy" else "integrity_conflict")
+                if state and state["installed"] and (state.get("target_directory") or ".") != relative:
+                    raise manager.OperationError("integrity_conflict")
+                catalog = steamcmd.cached_page(app_id)
+                if not catalog:
+                    raise manager.OperationError("catalog_unavailable")
+                dlcs = catalog.get("dlcs", [])
+                all_ids = [d["id"] for d in dlcs]
+                if not all(isinstance(i, str) and i.isdigit() for i in enabled_dlc_ids):
+                    raise manager.OperationError("invalid_selection")
+                if any(i not in all_ids for i in enabled_dlc_ids):
+                    raise manager.OperationError("invalid_selection")
+                names = [(d["id"], d["name"].replace("\n", " ").replace("\r", " ")) for d in dlcs if d["id"] in enabled_dlc_ids]
+                owned = {}
 
-            if unlocker == "smokeapi":
-                if proxy:
-                    await smokeapi.proxy_install(directory, all_dlc_ids, enabled_dlc_ids, proxy_dll)
-                else:
-                    await smokeapi.install(directory, all_dlc_ids, enabled_dlc_ids)
-            elif unlocker == "creamapi":
-                if proxy:
-                    await creamapi.proxy_install(directory, app_id, enabled_dlcs_with_names, proxy_dll)
-                else:
-                    await creamapi.install(directory, app_id, enabled_dlcs_with_names)
-            elif unlocker == "screamapi":
-                await screamapi.install(directory)
-            elif unlocker == "uplay_r1":
-                await uplay_r1.install(directory)
-            elif unlocker == "uplay_r2":
-                await uplay_r2.install(directory)
-            elif unlocker == "koaloader":
-                await koaloader.install(
-                    directory,
-                    proxy_dll,
-                    koaloader_autoload or [],
-                    all_dlc_ids,
-                    enabled_dlc_ids,
-                )
-            else:
-                return {"success": False, "error": f"Unknown unlocker: {unlocker}"}
-        except Exception as e:  # noqa: BLE001 - surface any failure to the frontend
-            decky.logger.error(f"[DlcUnlocker] Install failed for {app_id} ({unlocker}): {e}")
-            action_log.log_warning(f"[{app_id}] install failed ({unlocker}): {e}")
-            return {"success": False, "error": str(e)}
+                async def mutate(stage):
+                    if state and state["installed"]:
+                        manager.clean_owned(stage, state)
+                    clean = manager.snapshot(stage)
+                    manager.check_collisions(stage, unlocker, proxy, proxy_dll)
+                    module = manager.MODULES[unlocker]
+                    args = (all_ids, enabled_dlc_ids) if unlocker == "smokeapi" else (app_id, names)
+                    if proxy:
+                        await module.proxy_install(stage, *args, proxy_dll)
+                    else:
+                        await module.install(stage, *args)
+                    after = manager.snapshot(stage)
+                    owned.update({name: value for name, value in after.items() if clean.get(name) != value})
 
-        install_state.set_installed(
-            app_id,
-            unlocker,
-            enabled_dlc_ids,
-            proxy=proxy,
-            proxy_dll=proxy_dll if proxy else None,
-            koaloader_autoload=koaloader_autoload,
-        )
-        action_log.log_event(
-            f"[{app_id}] installed {unlocker} (proxy={proxy}, {len(enabled_dlc_ids)} DLC enabled)"
-        )
-        return {"success": True}
+                def commit(_after):
+                    install_state.set_installed(app_id, unlocker, enabled_dlc_ids, proxy, proxy_dll if proxy else None,
+                                                relative, owned, decky.DECKY_PLUGIN_VERSION)
+                await manager.transaction(app_id, directory, mutate, commit)
+                return {"success": True}
+            except Exception as error:
+                return failure(error)
+
+    async def _remove(self, app_id: str):
+        async with manager.LOCK:
+            try:
+                _, directory, state, _ = locate(app_id)
+                if not state or not state.get("installed"):
+                    raise manager.OperationError("legacy_install")
+                preserved = []
+                if not state.get("files"):
+                    state = {**state, "files": manager.legacy_files(directory, state)}
+
+                async def mutate(stage):
+                    preserved.extend(manager.clean_owned(stage, state))
+                await manager.transaction(app_id, directory, mutate, lambda _: install_state.mark_uninstalled(app_id))
+                return {"success": True, "preserved_files": preserved}
+            except Exception as error:
+                return failure(error)
 
     @action_log.log_call
     async def uninstall_dlc_unlocker(self, app_id: str):
-        game = steam_library.find_game(app_id)
-        if game is None:
-            return {"success": False, "error": "Game not found"}
-
-        try:
-            await unlocker_detection.uninstall_active(game["game_directory"])
-        except Exception as e:  # noqa: BLE001
-            decky.logger.error(f"[DlcUnlocker] Uninstall failed for {app_id}: {e}")
-            action_log.log_warning(f"[{app_id}] uninstall failed: {e}")
-            return {"success": False, "error": str(e)}
-
-        install_state.mark_uninstalled(app_id)
-        action_log.log_event(f"[{app_id}] uninstalled")
-        return {"success": True}
+        return await self._remove(app_id)
 
     @action_log.log_call
     async def force_cleanup(self, app_id: str):
-        """The "something's wrong, just clean everything up" escape hatch — sweeps
-        every unlocker's config/proxy/backup files from this game's directory and
-        restores the original steam_api(64).dll, regardless of which unlocker
-        CreamDeck's own record or file detection thinks is active. For when the
-        two have drifted apart (e.g. Steam's "verify integrity" restored the DLL
-        but left the unlocker's config file behind, since that's not part of the
-        game and Steam has no reason to touch it) and there's nothing left to
-        gain by asking the user to keep re-verifying — better to make it easy to
-        just remove CreamDeck's leftovers directly."""
-        game = steam_library.find_game(app_id)
-        if game is None:
-            return {"success": False, "error": "Game not found"}
-
-        try:
-            await unlocker_detection.force_cleanup(game["game_directory"])
-        except Exception as e:  # noqa: BLE001
-            decky.logger.error(f"[DlcUnlocker] Force cleanup failed for {app_id}: {e}")
-            action_log.log_warning(f"[{app_id}] force cleanup failed: {e}")
-            return {"success": False, "error": str(e)}
-
-        install_state.mark_uninstalled(app_id)
-        action_log.log_event(f"[{app_id}] force cleanup completed")
-        return {"success": True}
+        return await self._remove(app_id)
 
     async def _main(self):
-        decky.logger.info("CreamDeck plugin loaded")
         action_log.log_event("plugin loaded")
 
     async def _unload(self):
-        decky.logger.info("CreamDeck plugin unloaded")
         action_log.log_event("plugin unloaded")
 
     async def _uninstall(self):
-        decky.logger.info("CreamDeck plugin uninstalled")
         action_log.log_event("plugin uninstalled")

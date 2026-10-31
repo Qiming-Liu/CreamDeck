@@ -111,39 +111,21 @@ class UnlockerDetectionTest(unittest.TestCase):
 
         self._touch("steam_api64.dll")
         entries = {e["key"]: e for e in unlocker_detection.describe(self.directory)}
+        self.assertEqual(set(entries), {"smokeapi", "creamapi"})
         self.assertTrue(entries["smokeapi"]["detected"])
         self.assertTrue(entries["creamapi"]["detected"])
-        self.assertFalse(entries["screamapi"]["detected"])
-        self.assertFalse(entries["uplay_r1"]["detected"])
-        self.assertFalse(entries["uplay_r2"]["detected"])
-
-    def test_detects_screamapi_marker(self):
-        import unlocker_detection
-
-        self._touch("EOSSDK-Win64-Shipping.dll")
-        entries = {e["key"]: e for e in unlocker_detection.describe(self.directory)}
-        self.assertTrue(entries["screamapi"]["detected"])
-        self.assertFalse(entries["smokeapi"]["detected"])
 
     def test_nothing_detected_in_empty_directory(self):
         import unlocker_detection
 
         entries = unlocker_detection.describe(self.directory)
-        self.assertTrue(all(not e["detected"] for e in entries if e["key"] != "koaloader"))
+        self.assertTrue(all(not e["detected"] for e in entries))
 
     def test_recommended_default_prefers_smokeapi_when_steamworks_present(self):
         import unlocker_detection
 
         self._touch("steam_api.dll")
         self.assertEqual(unlocker_detection.recommended_default(self.directory), "smokeapi")
-
-    def test_detecting_an_alternative_does_not_override_the_smokeapi_default(self):
-        import unlocker_detection
-
-        self._touch("EOSSDK-Win64-Shipping.dll")
-        self.assertEqual(unlocker_detection.recommended_default(self.directory), "smokeapi")
-        entries = {entry["key"]: entry for entry in unlocker_detection.describe(self.directory)}
-        self.assertTrue(entries["screamapi"]["detected"])
 
     def test_currently_installed_is_none_for_fresh_directory(self):
         import unlocker_detection

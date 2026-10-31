@@ -11,7 +11,7 @@ body:
       options:
         - label: I have searched existing issues
         - label: This issue is not a duplicate of an existing one
-        - label: This is an issue with CreamDeck itself, not with a specific unlocker (SmokeAPI/CreamAPI/ScreamAPI/Uplay R1&R2) failing to work in a particular game
+        - label: This is an issue with CreamDeck itself, not with a specific unlocker (SmokeAPI/CreamAPI) failing to work in a particular game
 
   - type: textarea
     attributes:
@@ -51,10 +51,6 @@ body:
       options:
         - SmokeAPI
         - CreamAPI
-        - ScreamAPI
-        - Uplay R1 Unlocker
-        - Uplay R2 Unlocker
-        - Koaloader
         - Not sure / not applicable
     validations:
       required: true

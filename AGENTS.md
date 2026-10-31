@@ -23,8 +23,7 @@ regressions that a quick source read didn't catch.
 
 `main.py` is the Decky Loader `Plugin` class (the RPC surface the frontend
 calls via `@decky/api`'s `callable()`). It delegates to `py_modules/*.py`, one
-module per unlocker (`smokeapi.py`, `creamapi.py`, `screamapi.py`,
-`uplay_r1.py`, `uplay_r2.py`, `koaloader.py`) plus shared pieces:
+module per unlocker (`smokeapi.py`, `creamapi.py`) plus shared pieces:
 `unlocker_detection.py` (marker-file detection, dispatch, `force_cleanup`),
 `steamcmd.py`/`steamcmd_webapi.py`/`steam_store_api.py` (three-tier DLC-info
 lookup), `install_state.py` (the JSON source of truth for what's installed —
@@ -34,15 +33,18 @@ page, `src/views/CreamDeckPage.tsx`, registered as a full-page route
 (`/creamdeck/<appid>`) by `src/index.tsx`; `src/utils/backend.ts` wraps the
 `callable()` RPC bindings.
 
+`install_manager.py` stages filesystem changes, tracks file hashes and recovers
+unfinished transactions. Mutations must hold its lock and include the state write
+inside the transaction. Never bypass its ownership checks during cleanup.
+
 `install_state.json` (`~/homebrew/settings/CreamDeck/install_state.json`) is
 the source of truth for "what's installed and which DLC are enabled" — written
 right after install/uninstall. Don't reintroduce re-parsing each unlocker's own
 config file format (`SmokeAPI.config.json`, `cream_api.ini`, ...) to answer
 that question; `get_game_page` used to work that way and it was fragile (see
-Gotchas). The one thing still read live off disk is *whether a marker file
-exists at all* (`unlocker_detection.describe`'s `detected` flag, and
-`currently_installed` for the integrity cross-check) — that's inherently about
-the game's files, not CreamDeck's own actions.
+Gotchas). Marker presence and recorded file hashes are checked live for integrity;
+they do not replace the saved DLC selection. Local page loading must remain
+independent of the catalog RPC so network failures cannot block maintenance.
 
 ## On-device testing
 
@@ -112,10 +114,7 @@ or a real `plugin_loader` restart) before assuming the fix didn't work.
 - **SmokeAPI and CreamAPI back up the original DLL under the exact same
   filename** (`steam_api(64)_o.dll`) — don't use bare backup-file presence to
   tell them apart; key off each one's own config file
-  (`SmokeAPI.config.json` / `cream_api.ini`) instead. `screamapi.py`/
-  `uplay_r1.py`/`uplay_r2.py`'s `is_installed()` still use the old
-  backup-file check and have the same latent aliasing bug — not yet fixed
-  since it hasn't caused a reported issue like SmokeAPI/CreamAPI did.
+  (`SmokeAPI.config.json` / `cream_api.ini`) instead.
 - **DLC unlockers only spoof the Steamworks ownership check — they never
   download DLC content.** Enabling a DLC whose files were never downloaded
   makes the game think it owns content it can't load, which can crash on

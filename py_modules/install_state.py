@@ -32,7 +32,6 @@ class InstallState(TypedDict):
     proxy: bool
     proxy_dll: Optional[str]
     enabled_dlc_ids: list[str]
-    koaloader_autoload: list[str]
     target_directory: str
     files: dict[str, str]
     resource_version: str
@@ -48,8 +47,8 @@ def valid_state(value) -> bool:
             and (value.get("proxy_dll") is None or isinstance(value.get("proxy_dll"), str))
             and isinstance(value.get("target_directory", ""), str)
             and isinstance(value.get("resource_version", ""), str)
-            and all(isinstance(value.get(k), list) and all(isinstance(x, str) for x in value[k])
-                    for k in ("enabled_dlc_ids", "koaloader_autoload"))
+            and isinstance(value.get("enabled_dlc_ids"), list)
+            and all(isinstance(x, str) for x in value["enabled_dlc_ids"])
             and isinstance(value.get("files", {}), dict)
             and all(isinstance(k, str) and isinstance(h, str) for k, h in value.get("files", {}).items()))
 
@@ -97,7 +96,6 @@ def set_installed(
     enabled_dlc_ids: list[str],
     proxy: bool = False,
     proxy_dll: Optional[str] = None,
-    koaloader_autoload: Optional[list[str]] = None,
     target_directory: str = "",
     files: Optional[dict[str, str]] = None,
     resource_version: str = "",
@@ -108,7 +106,6 @@ def set_installed(
         proxy=proxy,
         proxy_dll=proxy_dll,
         enabled_dlc_ids=enabled_dlc_ids,
-        koaloader_autoload=koaloader_autoload or [],
         target_directory=target_directory,
         files=files or {},
         resource_version=resource_version,

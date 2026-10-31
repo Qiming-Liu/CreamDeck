@@ -12,16 +12,19 @@ export default function MaintenancePanel({ page, config, disabled, onUninstall, 
   const [help, setHelp] = useState(false);
   const label = page?.unlockers?.find(value => value.key === config.unlocker)?.label ?? config.unlocker;
   return <Focusable flow-children="column">
-    <GameRow><RowLabel description={page?.installed ? `${label} · ${page.proxy_dll ? `${t.proxyModeTitle} (${page.proxy_dll}.dll)` : config.unlocker === "koaloader" ? t.proxyModeTitle : t.directMode}` : t.notInstalled}>{t.currentInstall}</RowLabel></GameRow>
+    <GameRow><RowLabel description={page?.target_directory ?? "."}>{t.targetDirectory}</RowLabel></GameRow>
+    {page?.resource_version && <GameRow><RowLabel description={page.resource_version}>{t.resourceVersion}</RowLabel></GameRow>}
+    <GameRow><RowLabel description={page?.installed ? `${label} · ${page.proxy_dll ? `${t.proxyModeTitle} (${page.proxy_dll}.dll)` : t.directMode}` : t.notInstalled}>{t.currentInstall}</RowLabel></GameRow>
     {page?.installed && <GameRow><RowLabel description={t.uninstallHint}>{t.uninstall}</RowLabel>
       <DialogButton style={{ ...buttonStyle, background: "#a9323b", color: "#fff" }} disabled={disabled} onClick={onUninstall}>{t.uninstall}</DialogButton>
     </GameRow>}
     {page?.integrity_error && <>
       <h3 style={{ fontSize: 16, color: "#efc27e", margin: "18px 0 8px" }}>{t.integrityTitle}</h3>
       <div style={{ ...secondaryStyle, marginBottom: 12 }}>{t.integritySummary}</div>
-      <GameRow><RowLabel description={t.cleanupHint}>{t.cleanupTitle}</RowLabel>
+      {(page.file_status === "external" || page.file_status === "legacy") && <div style={{ ...secondaryStyle, marginBottom: 12 }}>{t.operationError("legacy_install")}</div>}
+      {page.installed && <GameRow><RowLabel description={t.cleanupHint}>{t.cleanupTitle}</RowLabel>
         <DialogButton style={{ ...buttonStyle, background: "#a9323b", color: "#fff" }} disabled={disabled} onClick={onCleanup}>{t.cleanupTitle}</DialogButton>
-      </GameRow>
+      </GameRow>}
       <Help label={t.details} open={help} onToggle={() => setHelp(value => !value)}>{page.integrity_error}<br />{t.integrityHint}</Help>
     </>}
     <div style={{ ...secondaryStyle, marginTop: 16, lineHeight: 1.6 }}>{t.maintenanceHint}</div>

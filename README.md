@@ -3,7 +3,7 @@
 [![PR Build & Test](https://img.shields.io/github/actions/workflow/status/Qiming-Liu/CreamDeck/pr-build-test.yml?branch=main&label=build)](https://github.com/Qiming-Liu/CreamDeck/actions/workflows/pr-build-test.yml)
 [![License: GPL 3.0](https://img.shields.io/github/license/Qiming-Liu/CreamDeck)](./LICENSE)
 
-CreamDeck is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin for unlocking installed PC game DLC (via SmokeAPI, CreamAPI, ScreamAPI, Uplay R1/R2 Unlocker, or Koaloader) directly on your Deck — a port of [CreamInstaller](https://github.com/FroggMaster/CreamInstaller)'s core DLC-selection and install/uninstall flow, focused on the one storefront that's already running through Proton on-device.
+CreamDeck is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin for unlocking installed PC game DLC (via SmokeAPI or CreamAPI) directly on your Deck — a port of [CreamInstaller](https://github.com/FroggMaster/CreamInstaller)'s core DLC-selection and install/uninstall flow, focused on the one storefront that's already running through Proton on-device.
 
 ![CreamDeck's per-game page, listing Street Fighter 6's DLC with SmokeAPI selected](docs/screenshot.png)
 
@@ -20,7 +20,7 @@ CreamDeck is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
 
 1. In your game library, right-click any installed game.
 2. Choose **CreamDeck** from the context menu.
-3. Open **Installation** to choose an unlocker and install method. CreamDeck shows whether the target file was detected in the game's directory.
+3. Open **Installation** to choose a target directory, unlocker and install method. Use **Check installation** to check resources, permissions and conflicting files before installing.
 4. Open **DLC** to select content, search by name or ID, or show only selected DLC. Bulk actions apply to the current search/filter results.
 5. Click **Install** in the top action bar. Later DLC changes use **Apply changes**; to change the unlocker or install method, uninstall from **Maintenance** first.
 
@@ -34,7 +34,38 @@ Saved configurations for existing installations are kept.
 >
 > CreamDeck flags exactly which DLC this applies to: any DLC listed with a **⚠** has its own depot on Steam (the same data [SteamDB's "Depots" tab](https://steamdb.info/app/394360/depots/) for a game shows), meaning it ships actual content files rather than just an ownership flag — unlocking it is more likely to need those files already present to actually work.
 
-CreamDeck's own UI follows your Steam client's language setting — it shows Chinese when Steam is set to Simplified or Traditional Chinese, and English otherwise.
+CreamDeck's UI follows your Steam client's language setting, with separate Simplified Chinese, Traditional Chinese and English translations.
+
+### Installation checks and recovery
+
+CreamDeck discovers target folders up to four levels below the game's root,
+visiting at most 512 folders and skipping directory symlinks. Choose the folder
+containing the platform DLL next to the game executable. The displayed bitness
+is inferred from the platform DLL filenames; it is not an executable compatibility test.
+
+Installation and removal run against a staging directory before changing game
+files. A recovery journal restores the previous files and install record if
+publishing fails or the plugin restarts during an unfinished operation.
+Keep `.creamdeck-transaction` intact if recovery reports an error; it contains
+the files needed for manual restoration.
+
+New install records include file hashes, the target folder and the CreamDeck
+version used. **Installed files verified** means those recorded files match;
+**Proton launch option ready** reports Steam's launch setting. Neither status
+verifies that DLC is usable inside the running game.
+
+Maintenance restores unchanged original backups and removes verified CreamDeck
+files. Files changed by a game update or another tool are kept and listed in
+the result. An older installation without hashes must first be removed through
+Maintenance; CreamDeck only adopts it for cleanup if its DLLs can be verified.
+Unrecognized installations or altered backups require manual restoration.
+
+The local installation state loads independently of Steam metadata requests.
+The DLC page shows the catalog's saved time and provides **Refresh DLC**.
+A failed refresh keeps the last catalog and does not block Maintenance.
+Installations requiring a DLC list stay disabled until a catalog is available.
+Install records use atomic replacement; invalid JSON is preserved as
+`install_state.json.corrupt-<timestamp>` for inspection.
 
 ### Unlockers
 
@@ -42,16 +73,14 @@ CreamDeck's own UI follows your Steam client's language setting — it shows Chi
 |---|---|---|
 | SmokeAPI | `steam_api(64).dll` | Yes |
 | CreamAPI | `steam_api(64).dll` | Yes |
-| ScreamAPI | `EOSSDK-Win32/64-Shipping.dll` | No — unlocks everything |
-| Uplay R1 Unlocker | `uplay_r1_loader(64).dll` | No — unlocks everything |
-| Uplay R2 Unlocker | `upc_r2_loader(64).dll` | No — unlocks everything |
-| Koaloader | a proxy DLL of your choice (version/winmm/winhttp/dxgi/d3d9/d3d10/d3d11/dinput8) | Only when auto-loading SmokeAPI |
 
-SmokeAPI and CreamAPI target the exact same file — they're alternatives, not both installed at once. ScreamAPI (Epic Online Services) and the two Uplay unlockers only lack a DLC list because that would require also scanning the Epic/Ubisoft stores, which this plugin doesn't do; see [Scope](#scope) below.
+SmokeAPI and CreamAPI target the exact same file — they're alternatives, not both installed at once.
+
+If upgrading from a version with other unlockers, uninstall those installations with the previous CreamDeck version first. Unsupported install records are preserved and block further changes. If restoring files with another installer, also remove that game's obsolete entry from `install_state.json` after restoration, with CreamDeck stopped.
 
 ### Proxy mode
 
-SmokeAPI, CreamAPI, and Koaloader can install as a proxy DLL instead of replacing the unlocker's target file directly — useful if a game doesn't get along with a direct replacement, and the only mode that survives a **Verify integrity of game files** (see [Troubleshooting](#troubleshooting)). Toggle **Use a proxy DLL** on the game's CreamDeck page and pick a filename.
+SmokeAPI and CreamAPI can install as a proxy DLL instead of replacing the unlocker's target file directly — useful if a game doesn't get along with a direct replacement, and the only mode that survives a **Verify integrity of game files** (see [Troubleshooting](#troubleshooting)). Toggle **Use a proxy DLL** on the game's CreamDeck page and pick a filename.
 
 > [!IMPORTANT]
 > Proxy mode needs one extra step that's specific to Proton: Wine ships its own built-in `winmm.dll`/`version.dll`/`winhttp.dll` and prefers those over the one CreamDeck drops into the game folder, so **the unlocker's hook silently never runs** unless this game's launch options tell Proton to prefer the dropped-in file (`WINEDLLOVERRIDES="<dll>=n,b" %command%`). The symptom is the game launching fine with DLC still locked, no error at all. CreamDeck's Installation page has a **Proton launch option** switch that reflects the current Steam setting. Turning it on adds the selected DLL override; turning it off removes only that DLL's override while preserving other DLL rules and launch arguments — you still need to fully close and relaunch the game afterward for it to take effect.
@@ -89,10 +118,10 @@ Confirmed working: game launches clean, DLC unlocked in-game.
 
 - **Game launches fine but DLC is still locked, no error shown** — almost always the Proton/WINEDLLOVERRIDES issue described in [Proxy mode](#proxy-mode) above, if you're using proxy mode. Enable the **Proton launch option** switch on the game's Installation page, then fully close and relaunch the game.
 - **Game crashes on launch after installing** — check whether the DLC you enabled actually has its content downloaded (see the note in [Usage](#usage)); if so, disable that DLC and try again with just the ones whose content you know is present.
-- **"Integrity check failed" banner** — CreamDeck's saved record of what's installed doesn't match what's actually on this game's files. This is expected after a **Verify integrity of game files** restores a direct-replace install's original DLL (the client has no reason to also clean up the unlocker's leftover config file, so CreamDeck still sees it and gets confused) — CreamDeck resolves this on its own when it can tell for certain nothing's installed anymore. If it can't (files show something *different* from what CreamDeck expects), use the **Remove all unlocker files** button on that banner to reset cleanly, then reinstall.
+- **"Files need repair" status** — the recorded file hashes no longer match. Open **Maintenance** and use **Clean verified files** to remove verified leftovers before reinstalling. Files changed by Steam or another tool are preserved; changed original backups require manual restoration.
 - **After Verify integrity**, a direct-replace (non-proxy) install is always undone — the client restores the original DLL as part of verifying, same as after most game updates. Reinstall through CreamDeck afterward, or switch to Proxy mode with the launch option set so it survives future verifies/updates.
 - If DLCs still aren't recognized after installing, try **Proxy mode** with a different DLL name.
-- If a game's DLC list fails to fetch, it's retried automatically the next time you open that game's page.
+- If a game's DLC list fails to fetch, its last saved catalog remains available. Use **Refresh DLC** or reopen the page to retry.
 - Antivirus software may flag the vendored unlocker DLLs — see [CreamInstaller's false-positive explanation](https://github.com/FroggMaster/CreamInstaller#false-positive-antivirus-detections) for why (DLL replacement + process hooking read as suspicious to heuristic scanners even when benign).
 - For anything else, check `creamdeck_actions.log` in Decky's plugin log directory (`~/homebrew/logs/CreamDeck/`) — every install/uninstall/page-load action is logged there with its arguments, outcome, and the plugin version, separate from Decky's own per-session log files.
 
@@ -129,4 +158,4 @@ settings, cleanup behavior, and verification commands.
 - [CreamInstaller](https://github.com/FroggMaster/CreamInstaller) — the Windows tool this plugin ports, and the source of every unlocker DLL it vendors ([decky/resources/](resources))
 - [CheatDeck](https://github.com/SheffeyG/CheatDeck) — the per-game context-menu → dedicated page navigation pattern this plugin's UI is built on
 - [decky-steamgriddb](https://github.com/SteamGridDB/decky-steamgriddb) — the original library-context-menu-patching technique CheatDeck (and in turn this plugin) reuses
-- **CreamAPI** by deadmau5, and **SmokeAPI** / **Koaloader** / **ScreamAPI** / **Uplay R1 Unlocker** / **Uplay R2 Unlocker** by [acidicoala](https://github.com/acidicoala) — the actual DLC unlockers this plugin installs (SmokeAPI/Koaloader: Unlicense; Uplay R1/R2 Unlocker: 0BSD; acidicoala/ScreamAPI's repo is currently disabled by GitHub for a ToS violation, so its license can't be independently re-verified right now)
+- **CreamAPI** by deadmau5, and **SmokeAPI** by [acidicoala](https://github.com/acidicoala) — the actual DLC unlockers this plugin installs (SmokeAPI: Unlicense)

@@ -175,8 +175,13 @@ def get_active_proxy_dll(directory: str) -> Optional[str]:
     state_path = _proxy_state_path(directory)
     if not os.path.isfile(state_path):
         return None
-    with open(state_path, "r", encoding="utf-8") as f:
-        return json.load(f).get("proxy_dll")
+    try:
+        with open(state_path, "r", encoding="utf-8") as f:
+            state = json.load(f)
+        value = state.get("proxy_dll") if isinstance(state, dict) else None
+        return value if value in PROXY_DLL_NAMES else None
+    except (ValueError, OSError):
+        return None
 
 
 def is_installed(directory: str) -> bool:
@@ -185,7 +190,7 @@ def is_installed(directory: str) -> bool:
     # the one marker that's actually unique to it.
     return (
         os.path.isfile(_config_path(directory))
-        or get_active_proxy_dll(directory) is not None
+        or os.path.isfile(_proxy_state_path(directory))
     )
 
 
