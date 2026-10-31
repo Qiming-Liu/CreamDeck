@@ -53,7 +53,14 @@ def _bundled_dlls() -> tuple[str, str]:
 def _write_config(directory: str, app_id: str, enabled_dlcs: Iterable[tuple[str, str]]) -> None:
     """CreamAPI's cream_api.ini uses an INI [dlc] section of `id=name` pairs — unlike
     SmokeAPI's config, only *enabled* DLC are listed at all (nothing lists the disabled ones)."""
-    lines = ["[steam]", f"AppId={app_id}", "", "[dlc]"]
+    # Match CreamInstaller's WriteConfig defaults. The steam_misc section is
+    # required for the bundled CreamAPI 5.3 build to read its configuration.
+    lines = [
+        "[steam]", f"AppId={app_id}", "unlockall=false",
+        "orgapi=steam_api_o.dll", "orgapi64=steam_api64_o.dll",
+        "extraprotection=false", "forceoffline=false", "",
+        "[steam_misc]", "disableuserinterface=false", "", "[dlc]",
+    ]
     for dlc_id, name in enabled_dlcs:
         lines.append(f"{dlc_id}={name}")
     with open(_config_path(directory), "w", encoding="utf-8") as f:
@@ -153,8 +160,13 @@ def get_active_proxy_dll(directory: str) -> Optional[str]:
     state_path = _proxy_state_path(directory)
     if not os.path.isfile(state_path):
         return None
-    with open(state_path, "r", encoding="utf-8") as f:
-        return json.load(f).get("proxy_dll")
+    try:
+        with open(state_path, "r", encoding="utf-8") as f:
+            state = json.load(f)
+        value = state.get("proxy_dll") if isinstance(state, dict) else None
+        return value if value in PROXY_DLL_NAMES else None
+    except (ValueError, OSError):
+        return None
 
 
 def is_installed(directory: str) -> bool:
@@ -163,5 +175,5 @@ def is_installed(directory: str) -> bool:
     # that's actually unique to CreamAPI.
     return (
         os.path.isfile(_config_path(directory))
-        or get_active_proxy_dll(directory) is not None
+        or os.path.isfile(_proxy_state_path(directory))
     )

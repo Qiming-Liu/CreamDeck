@@ -205,7 +205,8 @@ class CreamApiConfigTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_writes_the_real_app_id(self):
+    def test_writes_complete_config_for_the_real_app(self):
+        import configparser
         import creamapi
 
         creamapi._write_config(self.directory, "632360", [("1607890", "Survivors of the Void")])
@@ -214,6 +215,12 @@ class CreamApiConfigTest(unittest.TestCase):
 
         self.assertIn("AppId=632360", contents)
         self.assertIn("1607890=Survivors of the Void", contents)
+        config = configparser.ConfigParser()
+        config.read_string(contents)
+        self.assertFalse(config.getboolean("steam", "unlockall"))
+        self.assertEqual(config["steam"]["orgapi"], "steam_api_o.dll")
+        self.assertEqual(config["steam"]["orgapi64"], "steam_api64_o.dll")
+        self.assertFalse(config.getboolean("steam_misc", "disableuserinterface"))
 
 
 class SteamCmdDlcFallbackTest(unittest.IsolatedAsyncioTestCase):
