@@ -4,11 +4,9 @@ single-game-on-demand flow (no batching/parallel locks — the desktop version
 needed those because it scanned a whole library at once; here we only ever
 query one appid at a time, right after the user opens that game's page).
 
-Like the original, the public SteamCMD web API (steamcmd_webapi.py) is tried
-first and trusted unconditionally if it returns data — only the local
-SteamCMD-binary/.vdf-cache path below needs the buildid staleness check,
-since that's the plugin's own on-disk cache that can go stale as the game
-updates, whereas the web API's data is assumed reasonably fresh already.
+The public SteamCMD mirror and store DLC catalog are combined: a nonempty
+depot list can still omit ownership-only expansions. The local SteamCMD
+fallback checks build ids; explicit refresh bypasses each source's cache.
 """
 from __future__ import annotations
 
@@ -121,7 +119,7 @@ def _vdf_cache_path(app_id: str) -> str:
     return os.path.join(_appinfo_cache_dir(), f"{app_id}.vdf")
 
 
-async def _get_app_data_from_local_cmd(app_id: str, branch: str, build_id: int) -> Optional[dict]:
+async def _get_app_data_from_local_cmd(app_id: str, branch: str, build_id: int, force: bool = False) -> Optional[dict]:
     """Runs (or reuses a cached run of) `steamcmd +app_info_print`, retrying if the
     cached copy's buildid for `branch` is older than `build_id` (the game update
     Steam actually has installed) — port of GetAppInfo's staleness-check loop."""
@@ -131,7 +129,7 @@ async def _get_app_data_from_local_cmd(app_id: str, branch: str, build_id: int) 
     while attempts < 10:
         attempts += 1
         raw: Optional[str] = None
-        if os.path.isfile(cache_file):
+        if os.path.isfile(cache_file) and not (force and attempts == 1):
             with open(cache_file, "r", encoding="utf-8", errors="ignore") as f:
                 raw = f.read()
         if not raw:
@@ -258,14 +256,20 @@ async def _dlc_name(dlc_id: str) -> str:
     return name or dlc_id
 
 
-async def get_app_info(app_id: str, branch: str = "public", build_id: int = 0) -> Optional[AppInfo]:
-    app_data = await steamcmd_webapi.query(app_id)
+async def get_app_info(app_id: str, branch: str = "public", build_id: int = 0, force: bool = False) -> Optional[AppInfo]:
+    # A depot list can contain just a soundtrack even though the game has
+    # ownership-only expansions. Always supplement it with the store catalog.
+    app_data, store_dlc_ids = await asyncio.gather(
+        steamcmd_webapi.query(app_id, force=force),
+        steam_store_api.get_dlc_ids(app_id, force=force),
+    )
     source_cache = os.path.join(_appinfo_cache_dir(), f"{app_id}.cmd.json")
-    if app_data is None:
-        app_data = await _get_app_data_from_local_cmd(app_id, branch, build_id)
+    if app_data is None and store_dlc_ids is None:
+        app_data = await _get_app_data_from_local_cmd(app_id, branch, build_id, force=force)
         source_cache = _vdf_cache_path(app_id)
-    if app_data is None:
+    if app_data is None and store_dlc_ids is None:
         return None
+    app_data = app_data or {}
 
     name = get_child(get_child(app_data, "common"), "name") or app_id
     dlc_ids = _extract_dlc_ids(app_data)
@@ -275,31 +279,31 @@ async def get_app_info(app_id: str, branch: str = "public", build_id: int = 0) -
     depot_dlc_ids = _dlc_ids_with_depot(app_data) if depot_data_available else set()
     updated_at = os.path.getmtime(source_cache) if os.path.isfile(source_cache) else time.time()
 
-    if not dlc_ids:
-        # The web API's anonymous-login response is often missing depots/extended
-        # (flagged "_missing_token"/"public_only") even when it has the game's own
-        # name — the store page's DLC list is public data that doesn't need that.
-        # That also means depot data is unavailable for these ids (has_depot=None).
-        store_dlc_ids = await steam_store_api.get_dlc_ids(app_id)
-        if store_dlc_ids is None:
-            # Missing data is not a confirmed empty list. Keep the last catalog.
-            return None
-        if store_dlc_ids:
-            dlc_ids = set(store_dlc_ids)
-            depot_data_available = False
+    if store_dlc_ids is None and (not dlc_ids or (not get_child(app_data, "extended", "listofdlc")
+                                                and (app_data.get("_missing_token") or str(app_data.get("public_only")) == "1"))):
+        # Do not publish an explicitly partial anonymous response as a complete catalog.
+        return None
+    if store_dlc_ids is not None:
+        dlc_ids.update(store_dlc_ids)
         store_cache = steam_store_api._cache_path(app_id)
         if os.path.isfile(store_cache):
             updated_at = min(updated_at, os.path.getmtime(store_cache))
+
+    complete_depots = depot_data_available and not app_data.get("_missing_token") and str(app_data.get("public_only")) != "1"
 
     limit = asyncio.Semaphore(4)
 
     async def describe(dlc_id):
         async with limit:
+            try:
+                name = await asyncio.wait_for(_dlc_name(dlc_id), timeout=4)
+            except asyncio.TimeoutError:
+                name = dlc_id
             return DlcInfo(
-            id=dlc_id,
-            name=await _dlc_name(dlc_id),
-            has_depot=(dlc_id in depot_dlc_ids) if depot_data_available else None,
-        )
+                id=dlc_id,
+                name=name,
+                has_depot=True if dlc_id in depot_dlc_ids else False if complete_depots else None,
+            )
     dlcs = await asyncio.gather(*(describe(i) for i in sorted(dlc_ids, key=int)))
     return AppInfo(app_id=app_id, name=name, dlcs=dlcs, updated_at=updated_at,
                    stale=time.time() - updated_at >= 600)
@@ -326,15 +330,15 @@ _queries: dict[str, asyncio.Task] = {}
 
 async def get_page(app_id: str, branch: str, build_id: int, force: bool = False) -> dict:
     cached = cached_page(app_id)
-    if cached and not force and time.time() - cached["updated_at"] < 600:
+    if cached and cached.get("catalog_version") == 2 and not force and time.time() - cached["updated_at"] < 600:
         return {"success": True, **cached, "cached": True}
 
     async def fetch():
         try:
-            info = await asyncio.wait_for(get_app_info(app_id, branch, build_id), timeout=25)
+            info = await asyncio.wait_for(get_app_info(app_id, branch, build_id, force=force), timeout=25)
             if info is None:
                 raise ValueError("No app information")
-            page = {"dlcs": info["dlcs"], "updated_at": info.get("updated_at", time.time())}
+            page = {"dlcs": info["dlcs"], "updated_at": info.get("updated_at", time.time()), "catalog_version": 2}
             write_json(os.path.join(_appinfo_cache_dir(), f"{app_id}.page.json"), page)
             stale = info.get("stale", False)
             return {"success": not stale, **page, "cached": stale,

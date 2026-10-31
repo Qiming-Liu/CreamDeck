@@ -217,7 +217,7 @@ class SteamCmdDlcFallbackTest(unittest.IsolatedAsyncioTestCase):
         game_data = {"common": {"name": "Risk of Rain 2"}}  # no depots/extended
         dlc_data = {"common": {"name": "Risk of Rain 2: Survivors of the Void"}}
 
-        async def fake_webapi_query(app_id, is_dlc=False):
+        async def fake_webapi_query(app_id, is_dlc=False, force=False):
             if app_id == "632360":
                 return game_data
             if app_id == "1607890":
@@ -241,26 +241,30 @@ class SteamCmdDlcFallbackTest(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    async def test_prefers_depot_derived_dlc_ids_when_present(self):
+    async def test_merges_store_expansions_when_depots_only_list_soundtrack(self):
         import steamcmd
 
         game_data = {
             "common": {"name": "Risk of Rain 2"},
-            "extended": {"listofdlc": "1607890"},
+            "_missing_token": True,
+            "public_only": "1",
+            "depots": {"1": {"dlcappid": "1236890"}},
         }
 
-        async def fake_webapi_query(app_id, is_dlc=False):
+        async def fake_webapi_query(app_id, is_dlc=False, force=False):
             if app_id == "632360":
                 return game_data
-            return {"common": {"name": "Risk of Rain 2: Survivors of the Void"}}
+            return {"common": {"name": {"1236890": "Soundtrack", "1607890": "Survivors of the Void", "2306620": "Seekers of the Storm"}[app_id]}}
 
-        with patch("steamcmd.steamcmd_webapi.query", side_effect=fake_webapi_query), patch(
-            "steamcmd.steam_store_api.get_dlc_ids", AsyncMock()
+        with patch("steamcmd.steamcmd_webapi.query", side_effect=fake_webapi_query) as web_api, patch(
+            "steamcmd.steam_store_api.get_dlc_ids", AsyncMock(return_value=["1236890", "1607890", "2306620"])
         ) as store_api:
-            info = await steamcmd.get_app_info("632360")
+            info = await steamcmd.get_app_info("632360", force=True)
 
-        store_api.assert_not_called()
-        self.assertEqual([dlc["id"] for dlc in info["dlcs"]], ["1607890"])
+        web_api.assert_any_await("632360", force=True)
+        store_api.assert_awaited_once_with("632360", force=True)
+        self.assertEqual([dlc["id"] for dlc in info["dlcs"]], ["1236890", "1607890", "2306620"])
+        self.assertEqual({d["id"]: d["has_depot"] for d in info["dlcs"]}, {"1236890": True, "1607890": None, "2306620": None})
 
     async def test_flags_dlc_ids_that_have_their_own_depot(self):
         import steamcmd
@@ -274,7 +278,7 @@ class SteamCmdDlcFallbackTest(unittest.IsolatedAsyncioTestCase):
             },
         }
 
-        async def fake_webapi_query(app_id, is_dlc=False):
+        async def fake_webapi_query(app_id, is_dlc=False, force=False):
             if app_id == "632360":
                 return game_data
             if app_id == "111":
@@ -283,7 +287,9 @@ class SteamCmdDlcFallbackTest(unittest.IsolatedAsyncioTestCase):
                 return {"common": {"name": "DLC Without Depot"}}
             return None
 
-        with patch("steamcmd.steamcmd_webapi.query", side_effect=fake_webapi_query):
+        with patch("steamcmd.steamcmd_webapi.query", side_effect=fake_webapi_query), patch(
+            "steamcmd.steam_store_api.get_dlc_ids", AsyncMock(return_value=[])
+        ):
             info = await steamcmd.get_app_info("632360")
 
         by_id = {dlc["id"]: dlc["has_depot"] for dlc in info["dlcs"]}

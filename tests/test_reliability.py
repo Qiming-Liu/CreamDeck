@@ -2,6 +2,7 @@
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -121,6 +122,26 @@ class ReliabilityTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(result["success"])
             self.assertEqual(result["dlcs"], cached["dlcs"])
             self.assertEqual(steamcmd.cached_page("10"), cached)
+
+    async def test_forced_refresh_bypasses_both_fresh_source_caches(self):
+        import steamcmd
+        import steamcmd_webapi
+        import steam_store_api
+        with patch.object(decky, "DECKY_PLUGIN_RUNTIME_DIR", str(self.root / "runtime")):
+            os.makedirs(steamcmd._appinfo_cache_dir(), exist_ok=True)
+            old = {"common": {"name": "Game"}, "depots": {"1": {"dlcappid": "1236890"}}}
+            write_json(steamcmd_webapi._cache_path("10"), old)
+            write_json(steam_store_api._cache_path("10"), ["1236890"])
+            write_json(os.path.join(steamcmd._appinfo_cache_dir(), "10.page.json"),
+                       {"dlcs": [], "updated_at": time.time(), "catalog_version": 2})
+            with patch("steamcmd_webapi._fetch", return_value=old) as web, patch(
+                "steam_store_api._fetch", return_value=["1236890", "1607890"]
+            ) as store, patch("steamcmd._dlc_name", AsyncMock(side_effect=lambda i: i)):
+                result = await steamcmd.get_page("10", "public", 1, force=True)
+            self.assertTrue(result["success"], result)
+            self.assertEqual([d["id"] for d in result["dlcs"]], ["1236890", "1607890"])
+            web.assert_called_once_with("10")
+            store.assert_called_once_with("10")
 
     async def test_unsupported_install_is_preserved_and_blocks_game_changes(self):
         install_state.set_installed("10", "removed_unlocker", ["20"])

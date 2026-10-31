@@ -6,7 +6,8 @@ comes back missing the depots/extended sections a DLC list is extracted from
 (flagged "_missing_token"/"public_only" — an anonymous login without a license
 for the game) even though it can still see the game's own name and other
 "common" fields. A store page's DLC list is public storefront data and doesn't
-need any of that, so it's the fallback for exactly the case SteamCMD can't cover.
+need any of that. Its IDs supplement SteamCMD even when the mirror returns a
+nonempty but incomplete depot-derived list.
 """
 from __future__ import annotations
 
@@ -57,7 +58,7 @@ def _fetch(app_id: str) -> Optional[list[str]]:
     return [str(dlc_id) for dlc_id in dlc_ids]
 
 
-async def get_dlc_ids(app_id: str) -> Optional[list[str]]:
+async def get_dlc_ids(app_id: str, force: bool = False) -> Optional[list[str]]:
     """Returns app_id's DLC appids per its Steam store page, or None if the
     query failed and there's no usable cache."""
     cache_file = _cache_path(app_id)
@@ -65,7 +66,7 @@ async def get_dlc_ids(app_id: str) -> Optional[list[str]]:
     should_query = True
     if os.path.isfile(cache_file):
         age = time.time() - os.path.getmtime(cache_file)
-        should_query = age >= COOLDOWN_SECONDS
+        should_query = force or age >= COOLDOWN_SECONDS
 
     if should_query:
         dlc_ids = await asyncio.get_event_loop().run_in_executor(None, _fetch, app_id)

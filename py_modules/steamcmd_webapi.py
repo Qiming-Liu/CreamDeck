@@ -59,7 +59,7 @@ def _fetch(app_id: str) -> Optional[dict]:
     return app_data
 
 
-async def query(app_id: str, is_dlc: bool = False) -> Optional[dict]:
+async def query(app_id: str, is_dlc: bool = False, force: bool = False) -> Optional[dict]:
     """Returns the same shape as a parsed SteamCMD VDF block (dict with
     common/depots/extended keys), or None if both the live query and any
     cached fallback failed."""
@@ -69,7 +69,7 @@ async def query(app_id: str, is_dlc: bool = False) -> Optional[dict]:
     should_query = True
     if os.path.isfile(cache_file):
         age = time.time() - os.path.getmtime(cache_file)
-        should_query = age >= cooldown
+        should_query = force or age >= cooldown
 
     if should_query:
         app_data = await asyncio.get_event_loop().run_in_executor(None, _fetch, app_id)
