@@ -1,11 +1,11 @@
 import { ConfirmModal, DialogButton, Focusable, Router, SidebarNavigation, showModal, Spinner } from "@decky/ui";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { FaListUl, FaSlidersH, FaWrench } from "react-icons/fa";
 import { buttonStyle, secondaryStyle } from "../components/GameRow";
 import { proxyChoices, sameIds } from "../domain/gamePage";
 import { useGamePage } from "../hooks/useGamePage";
-import { diagnoseInstall, forceCleanup, installDlcUnlocker, uninstallDlcUnlocker } from "../utils/backend";
+import { forceCleanup, installDlcUnlocker, uninstallDlcUnlocker } from "../utils/backend";
 import { useWineDllOverride } from "../hooks/useWineDllOverride";
 import { useTranslations } from "../utils/i18n";
 import DlcPanel from "./DlcPanel";
@@ -24,28 +24,16 @@ export default function CreamDeckPage() {
   const { page, draft, setDraft, loading, busy, error, notice, needsRefresh, preserved,
     dlcLoading, dlcError, loadDlcs, load, action } = useGamePage(appId, t.operationError);
   const [launchBusy, setLaunchBusy] = useState(false);
-  const [diagnosing, setDiagnosing] = useState(false);
-  const [diagnosis, setDiagnosis] = useState("");
   const launch = useWineDllOverride(Number(appId), draft.proxyDll, !!page?.found && draft.proxy && proxyChoices(draft.unlocker).length > 0, setLaunchBusy);
-  useEffect(() => { setDiagnosis(""); }, [draft.unlocker, draft.proxy, draft.proxyDll, page?.target_directory]);
   const route = `/creamdeck/${appId}`;
   const installed = !!page?.installed;
-  const blocked = busy || launchBusy || diagnosing || loading || needsRefresh;
+  const blocked = busy || launchBusy || loading || needsRefresh;
   const dirty = installed && !sameIds(draft.enabledIds, page?.enabled_dlc_ids ?? []);
   const label = page?.unlockers?.find(u => u.key === draft.unlocker)?.label ?? draft.unlocker;
 
   const install = () => {
-    if (!appId) return;
-    void action(() => installDlcUnlocker(appId, draft.unlocker, draft.enabledIds, draft.proxy, draft.proxyDll, page?.target_directory ?? "."), t.installSuccess, t.refreshFailed);
-  };
-  const diagnose = async () => {
     if (!appId || blocked) return;
-    setDiagnosing(true); setDiagnosis("");
-    try {
-      const result = await diagnoseInstall(appId, draft.unlocker, draft.proxy, draft.proxyDll, page?.target_directory ?? ".");
-      setDiagnosis(result.success ? t.diagnosisReady(result.bitness ?? 64) : t.operationError(result.error_code));
-    } catch { setDiagnosis(t.operationError()); }
-    finally { setDiagnosing(false); }
+    void action(() => installDlcUnlocker(appId, draft.unlocker, draft.enabledIds, draft.proxy, draft.proxyDll, page?.target_directory ?? "."), t.installSuccess, t.refreshFailed);
   };
   const confirm = (cleanup: boolean) => {
     if (!appId) return;
@@ -75,6 +63,8 @@ export default function CreamDeckPage() {
     </div>}
     {error && <Focusable flow-children="row" style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "center" }}>
       <div role="alert" style={{ ...secondaryStyle, color: "#f0bd73", flex: 1 }}>{error}</div>
+      {page?.found && !installed && !window.location.pathname.endsWith("/install") && <DialogButton style={buttonStyle}
+        disabled={busy || launchBusy} onClick={() => Router.Navigate(`${route}/install`)}>{t.targetDirectory}</DialogButton>}
       <DialogButton style={buttonStyle} disabled={busy || launchBusy} onClick={() => { void load(); }}>{t.retry}</DialogButton>
     </Focusable>}
     {notice && <div role="status" style={{ ...secondaryStyle, color: "#9bd9ae", marginTop: 10 }}>{notice}</div>}
@@ -109,7 +99,7 @@ export default function CreamDeckPage() {
       { identifier: "install", route: `${route}/install`, title: t.installSettings, padding: "none", hideTitle: true, icon: <FaSlidersH />, content: content(
         <InstallPanel config={draft} onChange={setDraft} unlockers={page?.unlockers ?? []}
           installed={installed} disabled={blocked} page={page} onTarget={directory => { void load(directory); }}
-          launch={launch} diagnosis={diagnosis} onDiagnose={() => { void diagnose(); }} />) },
+          launch={launch} />) },
       { identifier: "maintenance", route: `${route}/maintenance`, title: t.maintenance, padding: "none", hideTitle: true, icon: <FaWrench />, content: content(
         <MaintenancePanel page={page} config={draft} disabled={blocked} onUninstall={() => confirm(false)} onCleanup={() => confirm(true)} />) },
     ]} />

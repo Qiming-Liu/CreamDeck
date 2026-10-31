@@ -1,5 +1,5 @@
-import { DialogButton, Dropdown, Focusable, Toggle } from "@decky/ui";
-import { useState } from "react";
+import { DialogButton, Dropdown, Focusable, TextField, Toggle } from "@decky/ui";
+import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { buttonStyle, GameRow, Help, RowLabel, secondaryStyle } from "../components/GameRow";
 import { Configuration, proxyChoices, selectUnlocker } from "../domain/gamePage";
@@ -16,23 +16,33 @@ interface Props {
   page?: GamePage;
   onTarget: (directory: string) => void;
   launch: ReturnType<typeof useWineDllOverride>;
-  diagnosis: string;
-  onDiagnose: () => void;
 }
 
-export default function InstallPanel({ config, onChange, unlockers, installed, disabled, page, onTarget, launch, diagnosis, onDiagnose }: Props) {
+export default function InstallPanel({ config, onChange, unlockers, installed, disabled, page, onTarget, launch }: Props) {
   const t = useTranslations();
   const [help, setHelp] = useState(false);
+  const [directory, setDirectory] = useState(page?.target_directory ?? ".");
+  useEffect(() => { setDirectory(page?.target_directory ?? "."); }, [page?.target_directory]);
   const choices = proxyChoices(config.unlocker);
   const info = unlockers.find(unlocker => unlocker.key === config.unlocker);
   const locked = installed || disabled;
 
   return <Focusable flow-children="column">
-    {(page?.targets?.length ?? 0) > 1 && <GameRow><RowLabel description={t.targetDirectoryHint}>{t.targetDirectory}</RowLabel>
+    <GameRow><RowLabel description={t.targetDirectoryHint}>{t.targetDirectory}</RowLabel>
+      <div style={{ width: "52%", minWidth: 140, overflowWrap: "anywhere" }}>{page?.target_directory ?? "."}</div>
+    </GameRow>
+    {(page?.targets?.length ?? 0) > 0 && <GameRow><RowLabel>{t.detectedDirectories}</RowLabel>
       <div style={{ width: "52%", minWidth: 140 }}><Dropdown disabled={locked} selectedOption={page?.target_directory ?? "."}
         rgOptions={(page?.targets ?? []).map(target => ({ data: target.path, label: `${target.path} · ${target.bitness}-bit${target.detected ? " ✓" : ""}` }))}
         onChange={option => onTarget(option.data)} /></div>
     </GameRow>}
+    <GameRow><RowLabel description={t.manualDirectoryHint}>{t.manualDirectory}</RowLabel>
+      <div style={{ width: "52%", minWidth: 140 }}>
+        <TextField disabled={locked} value={directory} onChange={event => setDirectory(event.target.value)} />
+        <DialogButton style={{ ...buttonStyle, marginTop: 8 }} disabled={locked || !directory.trim()}
+          onClick={() => onTarget(directory.trim())}>{t.useDirectory}</DialogButton>
+      </div>
+    </GameRow>
     {!installed && <div style={{ ...secondaryStyle, marginBottom: 12, lineHeight: 1.6 }}>{t.defaultSetupHint}</div>}
     {installed && <div style={{ ...secondaryStyle, marginBottom: 12 }}>{t.settingsLocked}</div>}
     <GameRow><RowLabel description={info?.detected ? t.targetDetected : t.targetNotDetected}>{t.unlockerTitle}</RowLabel>
@@ -64,9 +74,5 @@ export default function InstallPanel({ config, onChange, unlockers, installed, d
         <Help label={t.proxyHelp} open={help} onToggle={() => setHelp(value => !value)}>{t.protonOverrideNote(config.proxyDll)}</Help>
       </>}
     </>}
-
-    <GameRow><RowLabel description={diagnosis}>{t.diagnose}</RowLabel>
-      <DialogButton style={buttonStyle} disabled={disabled} onClick={onDiagnose}>{t.diagnose}</DialogButton>
-    </GameRow>
   </Focusable>;
 }

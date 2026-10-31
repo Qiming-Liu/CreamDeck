@@ -51,8 +51,6 @@ export interface DlcPage extends OperationResult {
   cached?: boolean;
 }
 export const getDlcPage = callable<[app_id: string, force: boolean], DlcPage>("get_dlc_page");
-export const diagnoseInstall = callable<[app_id: string, unlocker: string, proxy: boolean, proxy_dll: string,
-  target_directory: string], OperationResult>("diagnose_install");
 
 export const installDlcUnlocker = callable<
   [

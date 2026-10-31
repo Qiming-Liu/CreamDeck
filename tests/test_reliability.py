@@ -125,6 +125,24 @@ class ReliabilityTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["dlcs"], cached["dlcs"])
             self.assertEqual(steamcmd.cached_page("10"), cached)
 
+    async def test_manual_target_outside_scan_limits_remains_selectable(self):
+        nested = self.game.joinpath("a", "b", "c", "d", "e")
+        nested.mkdir(parents=True)
+        (nested / "steam_api64.dll").write_bytes(b"original")
+        game = {"game_directory": str(self.game), "name": "Game", "branch": "public", "build_id": 1}
+        with patch("main.steam_library.find_game", return_value=game):
+            plugin = main.Plugin()
+            page = await plugin.get_game_page("10")
+            self.assertTrue(page["found"])
+            self.assertEqual(page["targets"], [])
+            relative = os.path.relpath(nested, self.game)
+            page = await plugin.get_game_page("10", relative)
+            self.assertTrue(page["found"])
+            self.assertEqual(page["target_directory"], relative)
+            self.assertTrue(all(u["detected"] for u in page["unlockers"]))
+            page = await plugin.get_game_page("10", "../outside")
+            self.assertEqual(page["error_code"], "invalid_target")
+
     async def test_forced_refresh_bypasses_both_fresh_source_caches(self):
         import steamcmd
         import steamcmd_webapi
@@ -167,6 +185,28 @@ class ReliabilityTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(target.read_bytes(), b"existing installation")
         self.assertEqual(install_state.get_state("10"), original_state)
 
+
+    async def test_install_without_platform_dll_fails_before_writing(self):
+        game = {"game_directory": str(self.game), "name": "Game", "branch": "public", "build_id": 1}
+        resource32, resource64 = self.root / "32.dll", self.root / "64.dll"
+        resource32.write_bytes(b"unlocker32")
+        resource64.write_bytes(b"unlocker64")
+        for unlocker in ("smokeapi", "creamapi"):
+            for proxy in (False, True):
+                with self.subTest(unlocker=unlocker, proxy=proxy), patch(
+                    "main.steam_library.find_game", return_value=game
+                ), patch(f"{unlocker}._bundled_dlls", return_value=(str(resource32), str(resource64))), patch(
+                    "main.steamcmd.cached_page"
+                ) as catalog, patch("main.manager.transaction", new_callable=AsyncMock) as transaction:
+                    result = await main.Plugin().install_dlc_unlocker(
+                        "10", unlocker, ["20"], proxy=proxy, proxy_dll="version"
+                    )
+                    self.assertFalse(result["success"])
+                    self.assertEqual(result["error_code"], "target_not_found")
+                    catalog.assert_not_called()
+                    transaction.assert_not_awaited()
+                    self.assertEqual(list(self.game.iterdir()), [])
+                    self.assertIsNone(install_state.get_state("10"))
 
     async def test_only_supported_unlockers_can_install(self):
         with self.assertRaises(manager.OperationError) as raised:

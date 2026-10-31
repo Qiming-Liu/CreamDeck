@@ -41,8 +41,10 @@ export interface Translations {
   operationError: (code?: string) => string;
   targetDirectory: string;
   targetDirectoryHint: string;
-  diagnose: string;
-  diagnosisReady: (bits: number) => string;
+  detectedDirectories: string;
+  manualDirectory: string;
+  manualDirectoryHint: string;
+  useDirectory: string;
   filesHealthy: string;
   filesModified: string;
   filesLegacy: string;
@@ -116,7 +118,7 @@ export interface Translations {
   unlockerTitle: string;
   detectedSuffix: string;
   noTargetFile: (label: string) => string;
-  dlcTitle: (enabled: number, total: number) => string;
+  dlcTitle: (selected: number, total: number) => string;
   selectAll: string;
   deselectAll: string;
   noDlcFound: string;
