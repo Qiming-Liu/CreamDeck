@@ -45,7 +45,7 @@ const translations: Translations = {
   launchOptionFailed: "啟動選項暫時無法使用",
   launchOptionSwitchError: "無法讀取或更新 Steam 啟動選項，請重新載入以確認當前狀態。",
   launchOptionUnsupported: "目前啟動選項格式無法自動編輯。請在 Steam 中調整後重新載入。",
-  defaultSetupHint: '預設方案：SmokeAPI + version.dll 代理，並開啟下方的 Proton 啟動選項。這套組合已在《雨中冒險 2》中測試通過。',
+  defaultSetupHint: '預設方案：CreamAPI + 替換模式。也可選擇代理模式，代理模式需要開啟 Proton 啟動選項。',
   dlcManagement: "DLC 管理",
   installSettings: "安裝配置",
   maintenance: "維護",

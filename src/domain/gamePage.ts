@@ -16,12 +16,12 @@ export function proxyChoices(unlocker: string): string[] {
 
 export function configurationForPage(page: GamePage): Configuration {
   if (!page.installed) return {
-    unlocker: "smokeapi",
-    proxy: true,
+    unlocker: "creamapi",
+    proxy: false,
     proxyDll: "version",
     enabledIds: page.enabled_dlc_ids ?? [],
   };
-  const unlocker = page.selected_unlocker ?? "smokeapi";
+  const unlocker = page.selected_unlocker ?? "creamapi";
   return {
     unlocker,
     proxy: !!page.proxy_dll,

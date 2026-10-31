@@ -57,12 +57,12 @@ def currently_installed(directory: str) -> str | None:
 
 
 def recommended_default(directory: str) -> str:
-    """Default to the SmokeAPI setup tested on Risk of Rain 2.
+    """Default new installations to CreamAPI.
 
     Detection remains visible for choosing alternatives. Existing installations
     are selected from install_state instead of this default.
     """
-    return "smokeapi"
+    return "creamapi"
 
 
 async def uninstall_active(directory: str) -> None:

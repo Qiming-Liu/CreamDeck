@@ -69,7 +69,7 @@ class Plugin:
                     "dlc_updated_at": catalog.get("updated_at"), "dlc_cached": bool(catalog),
                     "enabled_dlc_ids": state["enabled_dlc_ids"] if state else [],
                     "unlockers": unlocker_detection.describe(directory),
-                    "selected_unlocker": installed or "smokeapi", "installed": installed is not None,
+                    "selected_unlocker": installed or "creamapi", "installed": installed is not None,
                     "proxy_dll": state["proxy_dll"] if state and state["proxy"] else None,
                     "integrity_error": integrity_error, "file_status": status,
                     "changed_files": changed, "target_directory": relative, "targets": options,

@@ -27,7 +27,7 @@ test("DLC filtering preserves name order across search and selected-only mode", 
 });
 
 test("switching Steam unlockers preserves valid proxy choices", () => {
-  const config = { ...configurationForPage({ found: true }), proxyDll: "winhttp" };
+  const config = { ...configurationForPage({ found: true }), unlocker: "smokeapi", proxy: true, proxyDll: "winhttp" };
   const cream = selectUnlocker(config, "creamapi");
   assert.equal(cream.proxyDll, "winhttp");
   assert.equal(cream.proxy, true);
@@ -40,9 +40,9 @@ test("reordering selections is not an unapplied change", () => {
   assert(!sameIds(["10"], ["10", "20"]));
 });
 
-test("uninstalled games start with SmokeAPI and the tested version.dll proxy setup", () => {
+test("uninstalled games start with CreamAPI and direct replacement", () => {
   const config = configurationForPage({ found: true, installed: false, selected_unlocker: "creamapi", proxy_dll: "winmm", enabled_dlc_ids: ["10"] });
-  assert.deepEqual(config, { unlocker: "smokeapi", proxy: true, proxyDll: "version", enabledIds: ["10"] });
+  assert.deepEqual(config, { unlocker: "creamapi", proxy: false, proxyDll: "version", enabledIds: ["10"] });
 });
 
 test("defaults preserve existing direct and proxy installations", () => {

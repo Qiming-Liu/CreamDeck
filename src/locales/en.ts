@@ -45,7 +45,7 @@ const translations: Translations = {
   launchOptionFailed: "Launch option unavailable",
   launchOptionSwitchError: "Could not read or update Steam launch options. Reload to check the current state.",
   launchOptionUnsupported: "These launch options cannot be edited automatically. Adjust them in Steam, then reload.",
-  defaultSetupHint: 'Default: SmokeAPI + version.dll proxy. Turn on Proton launch option below. This combination has been tested in Risk of Rain 2.',
+  defaultSetupHint: 'Default: CreamAPI + direct replacement. Proxy mode is optional and requires the Proton launch option.',
   dlcManagement: "DLC",
   installSettings: "Installation",
   maintenance: "Maintenance",

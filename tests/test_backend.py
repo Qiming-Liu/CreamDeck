@@ -135,11 +135,11 @@ class UnlockerDetectionTest(unittest.TestCase):
         entries = unlocker_detection.describe(self.directory)
         self.assertTrue(all(not e["detected"] for e in entries))
 
-    def test_recommended_default_prefers_smokeapi_when_steamworks_present(self):
+    def test_recommended_default_prefers_creamapi_when_steamworks_present(self):
         import unlocker_detection
 
         self._touch("steam_api.dll")
-        self.assertEqual(unlocker_detection.recommended_default(self.directory), "smokeapi")
+        self.assertEqual(unlocker_detection.recommended_default(self.directory), "creamapi")
 
     def test_currently_installed_is_none_for_fresh_directory(self):
         import unlocker_detection
