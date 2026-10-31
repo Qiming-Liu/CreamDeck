@@ -1,9 +1,3 @@
-/**
- * Adapted from CheatDeck (https://github.com/SheffeyG/CheatDeck/blob/main/src/patch.tsx),
- * itself credited to decky-steamgriddb's contextMenuPatch.tsx. Same react-patching
- * technique, renamed for the "CreamDeck" menu item and its own route.
- */
-
 import {
   afterPatch,
   type Export,
@@ -21,11 +15,17 @@ const MENU_ITEM_KEY = "creamdeck";
 
 // Always add before "Properties..."
 const spliceMenuItem = (children: any[], appid: number) => {
+  if (!Array.isArray(children)) return;
+  // Search recursively to support Steam's grouped/wrapped items.
+  // Shared menu components also render submenus, which have no Properties item.
   const propertiesMenuItemIdx = children.findIndex((item) =>
     findInReactTree(item, (x) => x?.onSelected?.toString().includes("AppProperties")),
   );
+  if (propertiesMenuItemIdx < 0) return;
+  const propertiesMenuItem = children[propertiesMenuItemIdx];
+  handleItemDupes(children);
   children.splice(
-    propertiesMenuItemIdx,
+    children.indexOf(propertiesMenuItem),
     0,
     <MenuItem
       key={MENU_ITEM_KEY}
@@ -48,8 +48,9 @@ const isOpeningAppContextMenu = (items: any[]) => {
 };
 
 const handleItemDupes = (items: any[]) => {
-  const existingIdx = items.findIndex((x: any) => x?.key === MENU_ITEM_KEY);
-  if (existingIdx !== -1) items.splice(existingIdx, 1);
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i]?.key === MENU_ITEM_KEY) items.splice(i, 1);
+  }
 };
 
 const patchMenuItems = (menuItems: any[], appid: number) => {
@@ -76,6 +77,8 @@ const patchMenuItems = (menuItems: any[], appid: number) => {
  * @returns A patch object; call `.unpatch()` to remove it when the plugin dismounts.
  */
 const contextMenuPatch = (LibraryContextMenu: any) => {
+  const nested: Patch[] = [];
+  const patchedTypes = new Set<any>();
   const patches: {
     outer?: Patch;
     inner?: Patch;
@@ -101,8 +104,11 @@ const contextMenuPatch = (LibraryContextMenu: any) => {
 
     if (!patches.inner) {
       patches.inner = afterPatch(component, "type", (_: any, ret: any) => {
-        // initial render
-        afterPatch(ret.type.prototype, "render", (_: any, ret2: any) => {
+        // Patch each menu type once, even if Steam renders it repeatedly.
+        const prototype = ret.type.prototype;
+        if (patchedTypes.has(prototype)) return ret;
+        patchedTypes.add(prototype);
+        nested.push(afterPatch(prototype, "render", (_: any, ret2: any) => {
           const menuItems = ret2.props.children[0]; // always the first child
           if (!isOpeningAppContextMenu(menuItems)) return ret2;
           try {
@@ -112,10 +118,10 @@ const contextMenuPatch = (LibraryContextMenu: any) => {
           }
           patchMenuItems(menuItems, appid!);
           return ret2;
-        });
+        }));
 
         // when Steam decides to refresh the app overview
-        afterPatch(ret.type.prototype, "shouldComponentUpdate", ([nextProps]: any, shouldUpdate: any) => {
+        nested.push(afterPatch(prototype, "shouldComponentUpdate", ([nextProps]: any, shouldUpdate: any) => {
           try {
             handleItemDupes(nextProps.children);
           } catch (error) {
@@ -128,7 +134,7 @@ const contextMenuPatch = (LibraryContextMenu: any) => {
           }
 
           return shouldUpdate;
-        });
+        }));
         return ret;
       });
     } else {
@@ -137,6 +143,8 @@ const contextMenuPatch = (LibraryContextMenu: any) => {
     return component;
   });
   patches.unpatch = () => {
+    for (const patch of nested.splice(0).reverse()) patch.unpatch();
+    patchedTypes.clear();
     patches.outer?.unpatch();
     patches.inner?.unpatch();
   };
@@ -146,7 +154,7 @@ const contextMenuPatch = (LibraryContextMenu: any) => {
 /**
  * Game context menu component, located via its module export (there's no
  * documented/stable public API for it, so this relies on locating the render
- * function by looking for known internal identifiers, same as CheatDeck/decky-steamgriddb).
+ * function by looking for known internal identifiers).
  */
 export const LibraryContextMenu = fakeRenderComponent(
   Object.values(findModuleByExport((e: Export) => e?.toString?.().includes("().LibraryContextMenu"))).find((sibling) =>
