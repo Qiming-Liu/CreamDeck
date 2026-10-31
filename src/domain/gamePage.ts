@@ -8,6 +8,7 @@ export interface Configuration {
 }
 
 const STEAM_PROXIES = ["version", "winmm", "winhttp"];
+const DLC_NAME_ORDER = new Intl.Collator("en", { sensitivity: "base", numeric: true });
 
 export function proxyChoices(unlocker: string): string[] {
   return ["smokeapi", "creamapi"].includes(unlocker) ? STEAM_PROXIES : [];
@@ -46,7 +47,9 @@ export function sameIds(first: string[], second: string[]): boolean {
 export function filterDlcs(dlcs: DlcInfo[], query: string, selectedOnly: boolean, selected: string[]): DlcInfo[] {
   const text = query.trim().toLocaleLowerCase();
   const ids = new Set(selected);
-  return dlcs.filter(dlc => (!selectedOnly || ids.has(dlc.id)) && (!text || `${dlc.name} ${dlc.id}`.toLocaleLowerCase().includes(text)));
+  return dlcs.filter(dlc => (!selectedOnly || ids.has(dlc.id)) && (!text || `${dlc.name} ${dlc.id}`.toLocaleLowerCase().includes(text)))
+    .sort((first, second) => DLC_NAME_ORDER.compare(first.name, second.name)
+      || DLC_NAME_ORDER.compare(first.id, second.id));
 }
 
 // Batch actions affect only the visible result set and preserve hidden selections.

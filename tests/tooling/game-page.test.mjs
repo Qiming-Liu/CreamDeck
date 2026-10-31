@@ -16,10 +16,14 @@ test("filtered bulk changes preserve selections outside the visible result set",
   assert.deepEqual(selectVisible(["10", "20"], visible, false), ["10"]);
 });
 
-test("DLC filtering combines names, IDs and selected-only mode", () => {
+test("DLC filtering preserves name order across search and selected-only mode", () => {
   assert.deepEqual(filterDlcs(dlcs, " 音乐 ", false, []), [dlcs[0]]);
   assert.deepEqual(filterDlcs(dlcs, "20", true, ["10"]), []);
   assert.deepEqual(filterDlcs(dlcs, "PASS", true, ["20"]), [dlcs[1]]);
+  const unordered = [{ id: "1", name: "zeta" }, { id: "2", name: "Alpha 10" }, { id: "3", name: "alpha 2" }, { id: "4", name: "Beta" }];
+  assert.deepEqual(filterDlcs(unordered, "", false, []).map(d => d.id), ["3", "2", "4", "1"]);
+  assert.deepEqual(filterDlcs(unordered, "alpha", true, ["2", "3"]).map(d => d.id), ["3", "2"]);
+  assert.deepEqual(unordered.map(d => d.id), ["1", "2", "3", "4"]);
 });
 
 test("switching Steam unlockers preserves valid proxy choices", () => {
