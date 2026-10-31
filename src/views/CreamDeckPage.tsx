@@ -47,6 +47,10 @@ const PAGE_TOP_OFFSET = "56px";
 // up hidden underneath it unless this page pads its own scroll area past it.
 const PAGE_BOTTOM_OFFSET = "56px";
 
+// Title paints a background shadow that reaches past its box, so keep the
+// first section heading clear of it instead of letting the shadow cover its top.
+const TITLE_GAP = "8px";
+
 export default function CreamDeckPage() {
   const t = useTranslations();
   const appId = useMemo(() => getAppIdFromLocation(), []);
@@ -193,7 +197,7 @@ export default function CreamDeckPage() {
       <Focusable style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
         <div
           className={staticClasses.Title}
-          style={{ padding: "1em", paddingTop: PAGE_TOP_OFFSET, flexShrink: 0 }}
+          style={{ padding: "1em", paddingTop: PAGE_TOP_OFFSET, flexShrink: 0, marginBottom: TITLE_GAP }}
         >
           {pageTitle}
         </div>
@@ -215,7 +219,7 @@ export default function CreamDeckPage() {
       <Focusable style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
         <div
           className={staticClasses.Title}
-          style={{ padding: "1em", paddingTop: PAGE_TOP_OFFSET, flexShrink: 0 }}
+          style={{ padding: "1em", paddingTop: PAGE_TOP_OFFSET, flexShrink: 0, marginBottom: TITLE_GAP }}
         >
           {pageTitle}
         </div>
@@ -241,7 +245,7 @@ export default function CreamDeckPage() {
     <Focusable style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <div
         className={staticClasses.Title}
-        style={{ padding: "1em", paddingTop: PAGE_TOP_OFFSET, flexShrink: 0 }}
+        style={{ padding: "1em", paddingTop: PAGE_TOP_OFFSET, flexShrink: 0, marginBottom: TITLE_GAP }}
       >
         {pageTitle}
       </div>
