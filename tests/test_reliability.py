@@ -175,8 +175,10 @@ class ReliabilityTest(unittest.IsolatedAsyncioTestCase):
 
 
     async def test_each_supported_unlocker_installs_and_uninstalls_in_both_modes(self):
+        import configparser
         game = {"game_directory": str(self.game), "name": "Game", "branch": "public", "build_id": 1}
-        catalog = {"dlcs": [{"id": "20", "name": "DLC", "has_depot": None}], "updated_at": 1}
+        catalog = {"dlcs": [{"id": "20", "name": "Enabled DLC", "has_depot": None},
+                             {"id": "30", "name": "Unselected DLC", "has_depot": None}], "updated_at": 1}
         resource32, resource64 = self.root / "32.dll", self.root / "64.dll"
         resource32.write_bytes(b"unlocker32")
         resource64.write_bytes(b"unlocker64")
@@ -198,6 +200,14 @@ class ReliabilityTest(unittest.IsolatedAsyncioTestCase):
                         state = install_state.get_state("10")
                         self.assertEqual(state["target_directory"], ".")
                         self.assertTrue(state["files"])
+                        if unlocker == "smokeapi":
+                            config = json.loads((self.game / "SmokeAPI.config.json").read_text())
+                            self.assertEqual(config["override_dlc_status"], {"30": "locked"})
+                        else:
+                            config = configparser.ConfigParser()
+                            config.read(self.game / "cream_api.ini")
+                            self.assertFalse(config.getboolean("steam", "unlockall"))
+                            self.assertEqual(dict(config["dlc"]), {"20": "Enabled DLC"})
                         result = await plugin.uninstall_dlc_unlocker("10")
                         self.assertTrue(result["success"], result)
                     self.assertEqual(original.read_bytes(), b"original game DLL")
