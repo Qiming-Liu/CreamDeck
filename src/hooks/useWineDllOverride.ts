@@ -7,7 +7,6 @@ export function useWineDllOverride(appId: number, proxyDll: string, active: bool
   const [options, setOptions] = useState<string | null>();
   const [error, setError] = useState<"read" | "write" | "unsupported" | "">("");
   const [saving, setSaving] = useState(false);
-  const [changed, setChanged] = useState(false);
   const [revision, setRevision] = useState(0);
   const generation = useRef(0);
   const lock = useRef(false);
@@ -16,7 +15,7 @@ export function useWineDllOverride(appId: number, proxyDll: string, active: bool
     const token = ++generation.current;
     let registration: { unregister: () => void } | undefined;
     let stopped = false;
-    setOptions(undefined); setError(""); setChanged(false);
+    setOptions(undefined); setError("");
     if (!active || !appId) return;
     const timer = setTimeout(() => {
       if (generation.current !== token) return;
@@ -39,13 +38,13 @@ export function useWineDllOverride(appId: number, proxyDll: string, active: bool
   async function toggle(enabled: boolean) {
     if (lock.current || !status.editable) return;
     lock.current = true; const token = generation.current;
-    setSaving(true); setError(""); setChanged(false); onBusy(true);
+    setSaving(true); setError(""); onBusy(true);
     try {
       // Re-read before every edit so another plugin's recent changes survive.
       const result = await setWineDllOverride(appId, proxyDll, enabled);
       if (generation.current !== token) return;
       if (!result) { setError("read"); return; }
-      setOptions(result.launchOptions); setChanged(result.applied);
+      setOptions(result.launchOptions);
     } catch {
       if (generation.current === token) setError("write");
     } finally {
@@ -54,7 +53,7 @@ export function useWineDllOverride(appId: number, proxyDll: string, active: bool
     }
   }
 
-  return { ...status, loading: active && options === undefined, saving, changed,
+  return { ...status, loading: active && options === undefined, saving,
     error: error || (options != null && !status.editable ? "unsupported" : ""),
     toggle, retry: () => setRevision(value => value + 1) };
 }

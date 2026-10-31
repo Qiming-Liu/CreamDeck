@@ -40,7 +40,6 @@ const translations: Translations = {
   preservedFiles: "Modified files preserved",
   resourceVersion: "Installed with CreamDeck",
   launchOptionReading: "Reading Steam launch options…",
-  launchOptionChanged: "Launch options updated. Restart the game for the change to take effect.",
   launchOptionFailed: "Launch option unavailable",
   launchOptionSwitchError: "Could not read or update Steam launch options. Reload to check the current state.",
   launchOptionUnsupported: "These launch options cannot be edited automatically. Adjust them in Steam, then reload.",

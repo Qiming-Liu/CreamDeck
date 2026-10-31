@@ -28,11 +28,11 @@ export default function InstallPanel({ config, onChange, unlockers, installed, d
   const locked = installed || disabled;
 
   return <Focusable flow-children="column">
-    <GameRow><RowLabel description={t.targetDirectoryHint}>{t.targetDirectory}</RowLabel>
+    {(page?.targets?.length ?? 0) > 1 && <GameRow><RowLabel description={t.targetDirectoryHint}>{t.targetDirectory}</RowLabel>
       <div style={{ width: "52%", minWidth: 140 }}><Dropdown disabled={locked} selectedOption={page?.target_directory ?? "."}
         rgOptions={(page?.targets ?? []).map(target => ({ data: target.path, label: `${target.path} · ${target.bitness}-bit${target.detected ? " ✓" : ""}` }))}
         onChange={option => onTarget(option.data)} /></div>
-    </GameRow>
+    </GameRow>}
     {!installed && <div style={{ ...secondaryStyle, marginBottom: 12, lineHeight: 1.6 }}>{t.defaultSetupHint}</div>}
     {installed && <div style={{ ...secondaryStyle, marginBottom: 12 }}>{t.settingsLocked}</div>}
     <GameRow><RowLabel description={info?.detected ? t.targetDetected : t.targetNotDetected}>{t.unlockerTitle}</RowLabel>
@@ -55,8 +55,8 @@ export default function InstallPanel({ config, onChange, unlockers, installed, d
           <div role="group" aria-label={t.protonLaunchOption}><Toggle value={launch.enabled}
             disabled={disabled || launch.loading || launch.saving || !launch.editable} onChange={enabled => { void launch.toggle(enabled); }} /></div>
         </GameRow>
-        {(launch.loading || launch.saving || launch.changed) && <div role="status" style={{ ...secondaryStyle, margin: "8px 0 12px" }}>
-          {launch.loading ? t.launchOptionReading : launch.saving ? t.working : t.launchOptionChanged}
+        {(launch.loading || launch.saving) && <div role="status" style={{ ...secondaryStyle, margin: "8px 0 12px" }}>
+          {launch.loading ? t.launchOptionReading : t.working}
         </div>}
         {launch.error && <GameRow><RowLabel description={launch.error === "unsupported" ? t.launchOptionUnsupported : t.launchOptionSwitchError}>{t.launchOptionFailed}</RowLabel>
           <DialogButton style={buttonStyle} disabled={disabled || launch.saving} onClick={launch.retry}>{t.retry}</DialogButton>

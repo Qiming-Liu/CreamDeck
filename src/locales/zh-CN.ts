@@ -40,7 +40,6 @@ const translations: Translations = {
   preservedFiles: "已保留被修改的文件",
   resourceVersion: "安装时的 CreamDeck 版本",
   launchOptionReading: "正在读取 Steam 启动项…",
-  launchOptionChanged: "启动项已更新，重新启动游戏后生效。",
   launchOptionFailed: "启动项暂不可用",
   launchOptionSwitchError: "无法读取或更新 Steam 启动项，请重新加载以确认当前状态。",
   launchOptionUnsupported: "当前启动项格式无法自动编辑。请在 Steam 中调整后重新加载。",

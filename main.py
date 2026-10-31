@@ -47,6 +47,11 @@ class Plugin:
                 options = await asyncio.to_thread(manager.candidates, game["game_directory"])
                 # Discovery can recover a transaction in a nested target too.
                 game, directory, state, relative = locate(app_id, target_directory)
+                options = [option for option in options if option["detected"]]
+                if (not state or not state["installed"]) and target_directory is None and options:
+                    if relative not in {option["path"] for option in options}:
+                        relative = options[0]["path"]
+                        directory = manager.target(game["game_directory"], relative)
                 status, changed = manager.integrity(directory, state)
                 disk = unlocker_detection.currently_installed(directory)
                 installed = state["unlocker"] if state and state["installed"] else None

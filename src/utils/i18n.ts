@@ -58,7 +58,6 @@ export interface Translations {
   resourceVersion: string;
 
   launchOptionReading: string;
-  launchOptionChanged: string;
   launchOptionFailed: string;
   launchOptionSwitchError: string;
   launchOptionUnsupported: string;

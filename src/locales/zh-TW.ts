@@ -40,7 +40,6 @@ const translations: Translations = {
   preservedFiles: "已保留被修改的檔案",
   resourceVersion: "安裝時的 CreamDeck 版本",
   launchOptionReading: "正在讀取 Steam 啟動選項…",
-  launchOptionChanged: "啟動選項已更新，重新啟動遊戲後生效。",
   launchOptionFailed: "啟動選項暫時無法使用",
   launchOptionSwitchError: "無法讀取或更新 Steam 啟動選項，請重新載入以確認當前狀態。",
   launchOptionUnsupported: "目前啟動選項格式無法自動編輯。請在 Steam 中調整後重新載入。",

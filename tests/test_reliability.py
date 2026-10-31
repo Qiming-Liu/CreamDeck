@@ -110,6 +110,8 @@ class ReliabilityTest(unittest.IsolatedAsyncioTestCase):
             page = await main.Plugin().get_game_page("10")
         self.assertTrue(page["found"])
         self.assertTrue(any(t["detected"] and t["path"] != "." for t in page["targets"]))
+        self.assertEqual(len(page["targets"]), 1)
+        self.assertEqual(page["target_directory"], os.path.relpath(nested, self.game))
         with self.assertRaises(manager.OperationError):
             manager.target(str(self.game), "../outside")
         # An unavailable catalog source must not erase a useful cached list.
