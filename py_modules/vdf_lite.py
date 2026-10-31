@@ -25,6 +25,8 @@ def _skip_whitespace_and_comments(text: str, i: int) -> int:
 
 def _read_string(text: str, i: int) -> tuple[str, int]:
     n = len(text)
+    if i >= n or text[i] in "{}":
+        raise ValueError("Expected a VDF string")
     if i < n and text[i] == '"':
         i += 1
         start = i
@@ -36,6 +38,8 @@ def _read_string(text: str, i: int) -> tuple[str, int]:
                 continue
             buf.append(text[i])
             i += 1
+        if i >= n:
+            raise ValueError("Unterminated VDF string")
         return "".join(buf), i + 1
     # Unquoted token (rare in these files, but be lenient)
     start = i
@@ -44,8 +48,7 @@ def _read_string(text: str, i: int) -> tuple[str, int]:
     return text[start:i], i
 
 
-def parse(text: str) -> Dict[str, Any]:
-    """Parses a VDF document and returns {rootKey: {...}} (or {} on failure)."""
+def _parse(text: str) -> Dict[str, Any]:
     i = 0
     n = len(text)
     result: Dict[str, Any] = {}
@@ -55,13 +58,13 @@ def parse(text: str) -> Dict[str, Any]:
         while True:
             i = _skip_whitespace_and_comments(text, i)
             if i >= n:
-                break
+                raise ValueError("Unterminated VDF object")
             if text[i] == "}":
                 return obj, i + 1
             key, i = _read_string(text, i)
             i = _skip_whitespace_and_comments(text, i)
             if i >= n:
-                break
+                raise ValueError("Missing VDF value")
             if text[i] == "{":
                 value, i = parse_object(i + 1)
             else:
@@ -80,6 +83,14 @@ def parse(text: str) -> Dict[str, Any]:
         result[key] = value
         i = _skip_whitespace_and_comments(text, i)
     return result
+
+
+def parse(text: str) -> Dict[str, Any]:
+    """Parses a VDF document and returns {rootKey: {...}} (or {} on failure)."""
+    try:
+        return _parse(text)
+    except (ValueError, RecursionError):
+        return {}
 
 
 def get_child(obj: Any, *path: str) -> Any:

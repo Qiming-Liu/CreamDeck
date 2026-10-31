@@ -93,6 +93,20 @@ class VdfLiteTest(unittest.TestCase):
         result = vdf_lite.parse('"AppState" { "installdir" "Foo" }')
         self.assertIsNone(vdf_lite.get_child(result, "AppState", "nonexistent"))
 
+    def test_malformed_documents_fail_without_partial_results(self):
+        import vdf_lite
+
+        for text in ('}', '{', '"AppState" { } }', '"AppState" {',
+                     '"AppState" { "appid" }', '"AppState" { "appid" "10"',
+                     '"AppState" { "name" "unfinished', '"AppState"'):
+            with self.subTest(text=text):
+                self.assertEqual(vdf_lite.parse(text), {})
+
+    def test_deeply_nested_documents_fail_without_recursion_errors(self):
+        import vdf_lite
+
+        self.assertEqual(vdf_lite.parse('"a" {' * 1500 + '}' * 1500), {})
+
 
 class UnlockerDetectionTest(unittest.TestCase):
     def setUp(self):
