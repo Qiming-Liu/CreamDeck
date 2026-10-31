@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { inspectWineDllOverride, setWineDllOverride } from "../utils/wineDllOverride";
 
-// Like CheatDeck, derive the switch from Steam's actual launch options rather
+// Derive the switch from Steam's actual launch options rather
 // than a plugin setting. Keep the subscription alive while this panel is open.
 export function useWineDllOverride(appId: number, proxyDll: string, active: boolean, onBusy: (busy: boolean) => void) {
   const [options, setOptions] = useState<string | null>();

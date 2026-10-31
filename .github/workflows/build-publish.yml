@@ -116,9 +116,7 @@ jobs:
           # with "type": "module" inside the installed plugin directory. Without
           # it, decky-loader falls back to eval()'ing dist/index.js as a legacy
           # IIFE bundle, which chokes on that `export` with "Unexpected token
-          # 'export'" (see SteamDeckHomebrew/decky-loader's plugin.py, and how
-          # CheatDeck's own build workflow includes package.json for the same
-          # reason).
+          # 'export'" (see SteamDeckHomebrew/decky-loader's plugin.py).
           cp plugin.json package.json main.py package/CreamDeck/
           cp -r py_modules package/CreamDeck/
           cp -r resources package/CreamDeck/

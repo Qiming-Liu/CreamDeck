@@ -1,4 +1,3 @@
-// Adapted from CheatDeck's GPL-3.0 launch-option parser.
 // Preserve source spans so editing one override leaves other launch options intact.
 
 export interface SourceSpan {
