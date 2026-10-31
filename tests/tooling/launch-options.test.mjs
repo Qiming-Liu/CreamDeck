@@ -73,13 +73,37 @@ test("complex and malformed options remain untouched instead of receiving a blin
 
 test("a switch edit reads fresh Steam settings before saving", async t => {
   const writes = [];
+  let options = 'FOO=latest WINEDLLOVERRIDES="dxgi=n,b" %command%';
   globalThis.SteamClient = { Apps: {
-    RegisterForAppDetails: (_id, callback) => { callback({ strLaunchOptions: 'FOO=latest WINEDLLOVERRIDES="dxgi=n,b" %command%' }); return { unregister() {} }; },
-    SetAppLaunchOptions: (id, value) => writes.push([id, value]),
+    RegisterForAppDetails: (_id, callback) => { callback({ strLaunchOptions: options }); return { unregister() {} }; },
+    SetAppLaunchOptions: (id, value) => { writes.push([id, value]); options = value; },
   } };
   t.after(() => { delete globalThis.SteamClient; });
   await setWineDllOverride(10, "version", true);
   assert.deepEqual(writes, [[10, 'FOO=latest WINEDLLOVERRIDES="dxgi=n,b;version=n,b" %command%']]);
+});
+
+test("DeckyGCM sidecar and shared folders survive enabling and disabling a DLL override", () => {
+  // Fixtures are real editSidecar output from the adjacent DeckyGCM checkout.
+  const fixtures = JSON.parse(fs.readFileSync(new URL("../fixtures/deckygcm-launch-options.json", import.meta.url), "utf8"));
+  for (const source of fixtures.flatMap(f => [f.enabled, f.disabled, f.wineFirstEnabled, f.wineFirstDisabled])) {
+    const enabled = editWineDllOverride(source, "version", true);
+    assert.equal(inspectWineDllOverride(enabled, "version").enabled, true);
+    const removed = editWineDllOverride(enabled, "version", false);
+    assert.equal(removed.trim(), source.replace('WINEDLLOVERRIDES="version=n,b" ', "").trim());
+    const existing = `WINEDLLOVERRIDES="dxgi=n,b" ${source}`;
+    const toggled = editWineDllOverride(editWineDllOverride(existing, "version", true), "version", false);
+    assert.equal(toggled.includes('WINEDLLOVERRIDES="dxgi=n,b"'), true);
+  }
+});
+
+test("an unconfirmed Steam write rejects instead of reporting readiness", async t => {
+  globalThis.SteamClient = { Apps: {
+    RegisterForAppDetails: (_id, callback) => { callback({ strLaunchOptions: '' }); return { unregister() {} }; },
+    SetAppLaunchOptions: () => {},
+  } };
+  t.after(() => { delete globalThis.SteamClient; });
+  await assert.rejects(() => setWineDllOverride(10, "version", true), /did not confirm/);
 });
 
 test("Steam write failures reject without reporting a successful toggle", async t => {

@@ -1,4 +1,4 @@
-// Proxy-DLL unlockers (SmokeAPI/CreamAPI in proxy mode, Koaloader) rely on the OS
+// Proxy-DLL unlockers (SmokeAPI/CreamAPI in proxy mode) rely on the OS
 // preferring a DLL dropped next to the game's .exe over the system one. On real
 // Windows that's automatic. Under Proton, Wine ships its own builtin winmm.dll/
 // version.dll/winhttp.dll and prefers those by default — so the dropped-in file
@@ -120,6 +120,14 @@ export async function setWineDllOverride(
   const alreadySet = merged === current;
   if (!alreadySet) {
     SteamClient.Apps.SetAppLaunchOptions(numericAppId, merged);
+    // Confirm the Steam client published our write before reporting readiness.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const saved = await getAppLaunchOptions(numericAppId);
+      if (saved === merged) return { applied: true, alreadySet: false, launchOptions: saved };
+      if (saved !== current && saved !== null) throw new Error("Launch options changed elsewhere");
+      if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    throw new Error("Steam did not confirm launch options");
   }
   return { applied: !alreadySet, alreadySet, launchOptions: merged };
 }

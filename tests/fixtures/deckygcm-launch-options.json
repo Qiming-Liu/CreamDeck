@@ -1,0 +1,16 @@
+[
+  {
+    "path": "/home/deck/DeckyGCM/My Trainer/Trainer.exe",
+    "enabled": "PROTON_REMOTE_DEBUG_CMD=''\"'\"'/home/deck/DeckyGCM/My Trainer/Trainer.exe'\"'\"'' PRESSURE_VESSEL_FILESYSTEMS_RW='/home/deck/DeckyGCM/My Trainer' %command% -novid",
+    "disabled": " PRESSURE_VESSEL_FILESYSTEMS_RW='/home/deck/DeckyGCM/My Trainer' %command% -novid",
+    "wineFirstEnabled": "WINEDLLOVERRIDES=\"version=n,b\" PROTON_REMOTE_DEBUG_CMD=''\"'\"'/home/deck/DeckyGCM/My Trainer/Trainer.exe'\"'\"'' PRESSURE_VESSEL_FILESYSTEMS_RW='/home/deck/DeckyGCM/My Trainer' %command% -novid",
+    "wineFirstDisabled": "WINEDLLOVERRIDES=\"version=n,b\" PRESSURE_VESSEL_FILESYSTEMS_RW='/home/deck/DeckyGCM/My Trainer' %command% -novid"
+  },
+  {
+    "path": "/home/deck/DeckyGCM/Player's Trainer/Trainer.exe",
+    "enabled": "PROTON_REMOTE_DEBUG_CMD=''\"'\"'/home/deck/DeckyGCM/Player'\"'\"'\"'\"'\"'\"'\"'\"'s Trainer/Trainer.exe'\"'\"'' PRESSURE_VESSEL_FILESYSTEMS_RW='/home/deck/DeckyGCM/Player'\"'\"'s Trainer' %command% -novid",
+    "disabled": " PRESSURE_VESSEL_FILESYSTEMS_RW='/home/deck/DeckyGCM/Player'\"'\"'s Trainer' %command% -novid",
+    "wineFirstEnabled": "WINEDLLOVERRIDES=\"version=n,b\" PROTON_REMOTE_DEBUG_CMD=''\"'\"'/home/deck/DeckyGCM/Player'\"'\"'\"'\"'\"'\"'\"'\"'s Trainer/Trainer.exe'\"'\"'' PRESSURE_VESSEL_FILESYSTEMS_RW='/home/deck/DeckyGCM/Player'\"'\"'s Trainer' %command% -novid",
+    "wineFirstDisabled": "WINEDLLOVERRIDES=\"version=n,b\" PRESSURE_VESSEL_FILESYSTEMS_RW='/home/deck/DeckyGCM/Player'\"'\"'s Trainer' %command% -novid"
+  }
+]
