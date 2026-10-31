@@ -13,10 +13,16 @@ function QuickAccessContent() {
   return <div style={{ padding: "1em" }}>{t.quickAccessContent}</div>;
 }
 
+function GameRoute() {
+  // Keep edits across sidebar routes, but never carry them into another game.
+  const appId = window.location.pathname.match(/\/creamdeck\/(\d+)/)?.[1];
+  return <CreamDeckPage key={appId} />;
+}
+
 export default definePlugin(() => {
   const menuPatch = contextMenuPatch(LibraryContextMenu);
 
-  routerHook.addRoute(ROUTE, CreamDeckPage, { exact: true });
+  routerHook.addRoute(ROUTE, GameRoute, { exact: false });
 
   return {
     name: "CreamDeck",

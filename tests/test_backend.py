@@ -137,6 +137,14 @@ class UnlockerDetectionTest(unittest.TestCase):
         self._touch("steam_api.dll")
         self.assertEqual(unlocker_detection.recommended_default(self.directory), "smokeapi")
 
+    def test_detecting_an_alternative_does_not_override_the_smokeapi_default(self):
+        import unlocker_detection
+
+        self._touch("EOSSDK-Win64-Shipping.dll")
+        self.assertEqual(unlocker_detection.recommended_default(self.directory), "smokeapi")
+        entries = {entry["key"]: entry for entry in unlocker_detection.describe(self.directory)}
+        self.assertTrue(entries["screamapi"]["detected"])
+
     def test_currently_installed_is_none_for_fresh_directory(self):
         import unlocker_detection
 

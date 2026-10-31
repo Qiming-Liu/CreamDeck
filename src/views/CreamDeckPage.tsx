@@ -1,419 +1,90 @@
-import {
-  ButtonItem,
-  Dropdown,
-  Focusable,
-  PanelSection,
-  PanelSectionRow,
-  Spinner,
-  staticClasses,
-  ToggleField,
-} from "@decky/ui";
-import { useEffect, useMemo, useState } from "react";
-
-import {
-  DlcInfo,
-  forceCleanup,
-  getGamePage,
-  installDlcUnlocker,
-  UnlockerInfo,
-  uninstallDlcUnlocker,
-} from "../utils/backend";
+import { ConfirmModal, DialogButton, Focusable, Router, SidebarNavigation, showModal, Spinner } from "@decky/ui";
+import { useState } from "react";
+import type { ReactNode } from "react";
+import { FaListUl, FaSlidersH, FaWrench } from "react-icons/fa";
+import { buttonStyle, secondaryStyle } from "../components/GameRow";
+import { sameIds, supportsDlcList } from "../domain/gamePage";
+import { useGamePage } from "../hooks/useGamePage";
+import { forceCleanup, installDlcUnlocker, uninstallDlcUnlocker } from "../utils/backend";
 import { useTranslations } from "../utils/i18n";
-import { applyWineDllOverride } from "../utils/wineDllOverride";
+import DlcPanel from "./DlcPanel";
+import InstallPanel from "./InstallPanel";
+import MaintenancePanel from "./MaintenancePanel";
 
-// Which unlockers Koaloader can autoload alongside its proxy DLL.
-const KOALOADER_AUTOLOAD_CHOICES = ["smokeapi", "screamapi", "uplay_r1", "uplay_r2"];
-
-// routerHook passes react-router v5-style props, but the exact shape isn't
-// part of @decky/ui's stable public types, so the appid is read straight out
-// of the URL instead of trusting a particular prop shape across versions.
-function getAppIdFromLocation(): string | null {
-  const match = window.location.pathname.match(/\/creamdeck\/(\d+)/);
-  return match ? match[1] : null;
-}
-
-// SmokeAPI/CreamAPI/Koaloader support a proxy DLL install; ScreamAPI/UplayR1/R2 don't.
-const PROXY_CAPABLE_UNLOCKERS = new Set(["smokeapi", "creamapi", "koaloader"]);
-
-// Full-page routes (unlike the QuickAccess panel) render underneath Big
-// Picture's fixed status bar (clock/battery/etc, ~40px tall, z-index 6000) —
-// nothing in that outer chrome reserves space for it, so this page has to
-// push its own content down far enough to clear it.
-const PAGE_TOP_OFFSET = "56px";
-
-// Game Mode also docks a fixed button-hint bar (A/B/X/Y, Options, ...) along
-// the bottom of the screen, same deal as the top status bar above — nothing
-// in the outer chrome reserves space for it, so the last row of content ends
-// up hidden underneath it unless this page pads its own scroll area past it.
-const PAGE_BOTTOM_OFFSET = "56px";
-
-// Title paints a background shadow that reaches past its box, so keep the
-// first section heading clear of it instead of letting the shadow cover its top.
-const TITLE_GAP = "8px";
+// Leave room for Big Picture's fixed status and footer bars.
+const PAGE_TOP_OFFSET = 56;
+const PAGE_BOTTOM_OFFSET = 56;
+// Steam's paged-settings content retains this inset even with padding="none".
+const SIDEBAR_CONTENT_TOP_INSET = 40;
 
 export default function CreamDeckPage() {
   const t = useTranslations();
-  const appId = useMemo(() => getAppIdFromLocation(), []);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [gameName, setGameName] = useState<string>("");
-  const [dlcs, setDlcs] = useState<DlcInfo[]>([]);
-  const [enabledIds, setEnabledIds] = useState<Set<string>>(new Set());
-  const [installed, setInstalled] = useState(false);
-  const [unlockers, setUnlockers] = useState<UnlockerInfo[]>([]);
-  const [selectedUnlocker, setSelectedUnlocker] = useState("smokeapi");
-  const [proxyChoices, setProxyChoices] = useState<string[]>([]);
-  const [useProxy, setUseProxy] = useState(false);
-  const [proxyDll, setProxyDll] = useState("winmm");
-  const [koaloaderAutoload, setKoaloaderAutoload] = useState<Set<string>>(new Set());
-  const [integrityError, setIntegrityError] = useState<string | null>(null);
-  const [launchOptionStatus, setLaunchOptionStatus] = useState<
-    "idle" | "working" | "applied" | "already" | "error"
-  >("idle");
+  const appId = window.location.pathname.match(/\/creamdeck\/(\d+)/)?.[1] ?? null;
+  const { page, draft, setDraft, loading, busy, error, notice, needsRefresh, load, action } = useGamePage(appId, t.loadFailed);
+  const [launchBusy, setLaunchBusy] = useState(false);
+  const route = `/creamdeck/${appId}`;
+  const installed = !!page?.installed;
+  const blocked = busy || launchBusy || loading || needsRefresh;
+  const dirty = installed && supportsDlcList(draft) && !sameIds(draft.enabledIds, page?.enabled_dlc_ids ?? []);
+  const label = page?.unlockers?.find(u => u.key === draft.unlocker)?.label ?? draft.unlocker;
 
-  useEffect(() => {
-    if (!appId) {
-      setError(t.noAppId);
-      setLoading(false);
-      return;
-    }
-    (async () => {
-      try {
-        const page = await getGamePage(appId);
-        if (!page.found) {
-          setError(t.gameNotInstalled);
-          setLoading(false);
-          return;
-        }
-        setGameName(page.name ?? appId);
-        setDlcs(page.dlcs ?? []);
-        setEnabledIds(new Set(page.enabled_dlc_ids ?? []));
-        setInstalled(!!page.installed);
-        setUnlockers(page.unlockers ?? []);
-        setSelectedUnlocker(page.selected_unlocker ?? "smokeapi");
-        setProxyChoices(page.proxy_dll_choices ?? []);
-        setKoaloaderAutoload(new Set(page.koaloader_autoload ?? []));
-        setIntegrityError(page.integrity_error ?? null);
-        if (page.proxy_dll) {
-          setUseProxy(true);
-          setProxyDll(page.proxy_dll);
-        }
-        setLoading(false);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : t.loadFailed);
-        setLoading(false);
-      }
-    })();
-  }, [appId]);
-
-  const toggleDlc = (id: string, checked: boolean) => {
-    setEnabledIds((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  };
-
-  const selectAll = (checked: boolean) => {
-    setEnabledIds(checked ? new Set(dlcs.map((dlc) => dlc.id)) : new Set());
-  };
-
-  const toggleKoaloaderAutoload = (key: string, checked: boolean) => {
-    setKoaloaderAutoload((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(key);
-      else next.delete(key);
-      return next;
-    });
-  };
-
-  const onInstall = async () => {
+  const install = () => {
     if (!appId) return;
-    setBusy(true);
-    setError(null);
-    const result = await installDlcUnlocker(
-      appId,
-      selectedUnlocker,
-      Array.from(enabledIds),
-      useProxy,
-      proxyDll,
-      Array.from(koaloaderAutoload),
-    );
-    setBusy(false);
-    if (!result.success) {
-      setError(result.error ?? "Install failed");
-      return;
-    }
-    setInstalled(true);
-    setIntegrityError(null);
+    void action(() => installDlcUnlocker(appId, draft.unlocker, draft.enabledIds, draft.proxy, draft.proxyDll, draft.autoload), t.installSuccess, t.refreshFailed);
   };
-
-  const onUninstall = async () => {
+  const confirm = (cleanup: boolean) => {
     if (!appId) return;
-    setBusy(true);
-    setError(null);
-    const result = await uninstallDlcUnlocker(appId);
-    setBusy(false);
-    if (!result.success) {
-      setError(result.error ?? "Uninstall failed");
-      return;
-    }
-    setInstalled(false);
-    setIntegrityError(null);
+    showModal(<ConfirmModal strTitle={cleanup ? t.removeUnlockerFiles : t.uninstall}
+      strDescription={cleanup ? t.cleanupConfirm : t.uninstallConfirm}
+      strOKButtonText={cleanup ? t.removeUnlockerFiles : t.uninstall} strCancelButtonText={t.cancel}
+      onOK={() => { void action(() => cleanup ? forceCleanup(appId) : uninstallDlcUnlocker(appId), cleanup ? t.cleanupSuccess : t.uninstallSuccess, t.refreshFailed); }} />, window);
   };
 
-  const onApplyWineDllOverride = async () => {
-    if (!appId) return;
-    setLaunchOptionStatus("working");
-    try {
-      const result = await applyWineDllOverride(Number(appId), proxyDll);
-      setLaunchOptionStatus(result ? (result.alreadySet ? "already" : "applied") : "error");
-    } catch {
-      setLaunchOptionStatus("error");
-    }
-  };
-
-  const onForceCleanup = async () => {
-    if (!appId) return;
-    setBusy(true);
-    setError(null);
-    const result = await forceCleanup(appId);
-    setBusy(false);
-    if (!result.success) {
-      setError(result.error ?? "Cleanup failed");
-      return;
-    }
-    setInstalled(false);
-    setIntegrityError(null);
-    setEnabledIds(new Set());
-  };
-
-  const pageTitle = gameName ? `CreamDeck (${gameName})` : "CreamDeck";
-
-  if (loading) {
-    return (
-      <Focusable style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-        <div
-          className={staticClasses.Title}
-          style={{ padding: "1em", paddingTop: PAGE_TOP_OFFSET, flexShrink: 0, marginBottom: TITLE_GAP }}
-        >
-          {pageTitle}
+  const header = <div style={{ flexShrink: 0, background: "#1b2029", paddingBottom: 12, marginBottom: 12 }}>
+    <Focusable flow-children="row" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ flex: "1 1 0", minWidth: 0 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, margin: "0 0 5px", overflowWrap: "anywhere" }}>{page?.name || "CreamDeck"}</h2>
+        <div role="status" style={{ fontSize: 12, color: page?.integrity_error ? "#f0bd73" : dirty ? "#73c6f4" : "#aeb7c5" }}>
+          {page?.integrity_error ? t.integrityTitle : installed ? `${t.installed} · ${label}${dirty ? ` · ${t.unsaved}` : ""}` : t.notInstalled}
         </div>
-        <div style={{ marginTop: "0.75em" }}>
-          <PanelSection>
-            <PanelSectionRow>
-              <div style={{ display: "flex", justifyContent: "center", padding: "1em 0" }}>
-                <Spinner style={{ width: "32px", height: "32px" }} />
-              </div>
-            </PanelSectionRow>
-          </PanelSection>
-        </div>
-      </Focusable>
-    );
-  }
-
-  if (error) {
-    return (
-      <Focusable style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-        <div
-          className={staticClasses.Title}
-          style={{ padding: "1em", paddingTop: PAGE_TOP_OFFSET, flexShrink: 0, marginBottom: TITLE_GAP }}
-        >
-          {pageTitle}
-        </div>
-        <div style={{ marginTop: "0.75em" }}>
-          <PanelSection>
-            <PanelSectionRow>{error}</PanelSectionRow>
-          </PanelSection>
-        </div>
-      </Focusable>
-    );
-  }
-
-  const selectedInfo = unlockers.find((u) => u.key === selectedUnlocker);
-  const showKoaloaderAutoload = selectedUnlocker === "koaloader";
-  // Koaloader only has a DLC list when it's actually auto-loading SmokeAPI — picking
-  // "Koaloader" alone doesn't imply a DLC list the way picking "SmokeAPI" does.
-  const showDlcList = showKoaloaderAutoload
-    ? koaloaderAutoload.has("smokeapi")
-    : selectedInfo?.supports_dlc_list ?? false;
-  const showProxyControls = PROXY_CAPABLE_UNLOCKERS.has(selectedUnlocker);
-
-  return (
-    <Focusable style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-      <div
-        className={staticClasses.Title}
-        style={{ padding: "1em", paddingTop: PAGE_TOP_OFFSET, flexShrink: 0, marginBottom: TITLE_GAP }}
-      >
-        {pageTitle}
       </div>
-
-      <Focusable
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: "auto",
-          padding: `0.75em 1em calc(1em + ${PAGE_BOTTOM_OFFSET})`,
-        }}
-      >
-        {integrityError && (
-          <PanelSection title={t.integrityTitle}>
-            <PanelSectionRow>{integrityError}</PanelSectionRow>
-            <PanelSectionRow>{t.integrityHint}</PanelSectionRow>
-            <PanelSectionRow>
-              <ButtonItem layout="below" disabled={busy} onClick={onForceCleanup}>
-                {busy ? t.working : t.removeUnlockerFiles}
-              </ButtonItem>
-            </PanelSectionRow>
-          </PanelSection>
-        )}
-
-        <PanelSection title={t.unlockerTitle}>
-          <PanelSectionRow>
-            <Dropdown
-              rgOptions={unlockers.map((u) => ({
-                data: u.key,
-                label: u.detected ? `${u.label} ${t.detectedSuffix}` : u.label,
-              }))}
-              selectedOption={selectedUnlocker}
-              disabled={installed}
-              onChange={(option) => setSelectedUnlocker(option.data)}
-            />
-          </PanelSectionRow>
-          {!selectedInfo?.detected && selectedUnlocker !== "koaloader" && (
-            <PanelSectionRow>{t.noTargetFile(selectedInfo?.label ?? "this unlocker")}</PanelSectionRow>
-          )}
-        </PanelSection>
-
-        {showKoaloaderAutoload && (
-          <PanelSection title={t.koaloaderAutoloadTitle}>
-            {KOALOADER_AUTOLOAD_CHOICES.map((key) => {
-              const info = unlockers.find((u) => u.key === key);
-              return (
-                <PanelSectionRow key={key}>
-                  <ToggleField
-                    label={info?.label ?? key}
-                    description={info?.detected ? t.detectedInGame : undefined}
-                    checked={koaloaderAutoload.has(key)}
-                    disabled={installed}
-                    onChange={(checked) => toggleKoaloaderAutoload(key, checked)}
-                  />
-                </PanelSectionRow>
-              );
-            })}
-          </PanelSection>
-        )}
-
-        {showDlcList ? (
-          <PanelSection title={t.dlcTitle(enabledIds.size, dlcs.length)}>
-            <PanelSectionRow>
-              <ButtonItem layout="below" onClick={() => selectAll(true)}>
-                {t.selectAll}
-              </ButtonItem>
-            </PanelSectionRow>
-            <PanelSectionRow>
-              <ButtonItem layout="below" onClick={() => selectAll(false)}>
-                {t.deselectAll}
-              </ButtonItem>
-            </PanelSectionRow>
-
-            {dlcs.length === 0 && <PanelSectionRow>{t.noDlcFound}</PanelSectionRow>}
-
-            {dlcs.some((dlc) => dlc.has_depot) && (
-              <PanelSectionRow>{t.depotWarningNote}</PanelSectionRow>
-            )}
-
-            {dlcs.map((dlc) => (
-              <PanelSectionRow key={dlc.id}>
-                <ToggleField
-                  label={dlc.has_depot ? `⚠ ${dlc.name}` : dlc.name}
-                  description={dlc.has_depot ? `${dlc.id} · ${t.needsDepotFiles}` : dlc.id}
-                  checked={enabledIds.has(dlc.id)}
-                  onChange={(checked) => toggleDlc(dlc.id, checked)}
-                />
-              </PanelSectionRow>
-            ))}
-          </PanelSection>
-        ) : (
-          <PanelSection title={t.dlcPanelFallbackTitle}>
-            <PanelSectionRow>
-              {t.noDlcListNote(selectedInfo?.label ?? "This unlocker")}
-            </PanelSectionRow>
-          </PanelSection>
-        )}
-
-        {showProxyControls && (
-          <PanelSection title={t.proxyModeTitle}>
-            <PanelSectionRow>
-              <ToggleField
-                label={t.useProxyDll}
-                description={t.useProxyDllDescription}
-                checked={useProxy}
-                disabled={installed}
-                onChange={(checked) => {
-                  setUseProxy(checked);
-                  setLaunchOptionStatus("idle");
-                }}
-              />
-            </PanelSectionRow>
-            {useProxy && (
-              <PanelSectionRow>
-                <Dropdown
-                  rgOptions={proxyChoices.map((name) => ({ data: name, label: `${name}.dll` }))}
-                  selectedOption={proxyDll}
-                  disabled={installed}
-                  onChange={(option) => {
-                    setProxyDll(option.data);
-                    setLaunchOptionStatus("idle");
-                  }}
-                />
-              </PanelSectionRow>
-            )}
-            {useProxy && (
-              <>
-                <PanelSectionRow>{t.protonOverrideNote(proxyDll)}</PanelSectionRow>
-                <PanelSectionRow>
-                  <ButtonItem
-                    layout="below"
-                    disabled={launchOptionStatus === "working"}
-                    onClick={onApplyWineDllOverride}
-                  >
-                    {launchOptionStatus === "working" ? t.working : t.setLaunchOption(proxyDll)}
-                  </ButtonItem>
-                </PanelSectionRow>
-                {launchOptionStatus === "applied" && (
-                  <PanelSectionRow>{t.launchOptionApplied}</PanelSectionRow>
-                )}
-                {launchOptionStatus === "already" && (
-                  <PanelSectionRow>{t.launchOptionAlready}</PanelSectionRow>
-                )}
-                {launchOptionStatus === "error" && (
-                  <PanelSectionRow>
-                    {t.launchOptionError(`WINEDLLOVERRIDES="${proxyDll}=n,b" %command%`)}
-                  </PanelSectionRow>
-                )}
-              </>
-            )}
-          </PanelSection>
-        )}
-
-        <PanelSection>
-          <PanelSectionRow>
-            <ButtonItem layout="below" disabled={busy || !!integrityError} onClick={onInstall}>
-              {busy ? t.working : installed ? t.updateInstall : t.install}
-            </ButtonItem>
-          </PanelSectionRow>
-          {installed && (
-            <PanelSectionRow>
-              <ButtonItem layout="below" disabled={busy} onClick={onUninstall}>
-                {busy ? t.working : t.uninstall}
-              </ButtonItem>
-            </PanelSectionRow>
-          )}
-        </PanelSection>
-      </Focusable>
+      {page?.found && <DialogButton style={buttonStyle} disabled={blocked || !!page.integrity_error || (installed && !dirty)} onClick={install}>
+        {busy ? t.working : installed ? dirty ? t.applyChanges : t.applied : t.install}
+      </DialogButton>}
     </Focusable>
-  );
+    {page?.integrity_error && !window.location.pathname.endsWith("/maintenance") && <div style={{ ...secondaryStyle, color: "#f0bd73", marginTop: 10 }}>{t.integritySummary}
+      <DialogButton style={{ ...buttonStyle, marginTop: 8 }} disabled={blocked} onClick={() => Router.Navigate(`${route}/maintenance`)}>{t.openMaintenance}</DialogButton>
+    </div>}
+    {error && <Focusable flow-children="row" style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "center" }}>
+      <div role="alert" style={{ ...secondaryStyle, color: "#f0bd73", flex: 1 }}>{error}</div>
+      <DialogButton style={buttonStyle} disabled={busy || launchBusy} onClick={() => { void load(); }}>{t.retry}</DialogButton>
+    </Focusable>}
+    {notice && <div role="status" style={{ ...secondaryStyle, color: "#9bd9ae", marginTop: 10 }}>{notice}</div>}
+  </div>;
+
+  const content = (children: ReactNode) => <Focusable className="creamdeck-content" flow-children="column" style={{
+    display: "flex", flexDirection: "column", height: `calc(100vh - ${PAGE_TOP_OFFSET + PAGE_BOTTOM_OFFSET + SIDEBAR_CONTENT_TOP_INSET}px)`,
+    boxSizing: "border-box", padding: "24px 32px 16px", minHeight: 0,
+  }}>
+    {header}
+    <Focusable className="creamdeck-scroll" flow-children="column" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 2px 16px" }}>
+      {loading ? <div style={{ padding: 24, textAlign: "center" }}><Spinner style={{ width: 32, height: 32 }} /></div>
+        : !appId ? <div>{t.noAppId}</div>
+        : !page?.found ? <div>{error ? t.loadFailed : t.gameNotInstalled}</div>
+        : children}
+    </Focusable>
+  </Focusable>;
+
+  return <div className="creamdeck-page" style={{ position: "absolute", inset: 0, paddingTop: PAGE_TOP_OFFSET,
+    paddingBottom: PAGE_BOTTOM_OFFSET, boxSizing: "border-box" }}>
+    <SidebarNavigation title="CreamDeck" showTitle disableRouteReporting pages={[
+      { identifier: "dlc", route: `${route}/dlc`, title: t.dlcManagement, padding: "none", hideTitle: true, icon: <FaListUl />, content: content(
+        <DlcPanel dlcs={page?.dlcs ?? []} config={draft} onChange={setDraft} disabled={blocked} />) },
+      { identifier: "install", route: `${route}/install`, title: t.installSettings, padding: "none", hideTitle: true, icon: <FaSlidersH />, content: content(
+        <InstallPanel appId={appId ?? ""} config={draft} onChange={setDraft} unlockers={page?.unlockers ?? []}
+          installed={installed} disabled={blocked} onLaunchBusy={setLaunchBusy} />) },
+      { identifier: "maintenance", route: `${route}/maintenance`, title: t.maintenance, padding: "none", hideTitle: true, icon: <FaWrench />, content: content(
+        <MaintenancePanel page={page} config={draft} disabled={blocked} onUninstall={() => confirm(false)} onCleanup={() => confirm(true)} />) },
+    ]} />
+  </div>;
 }

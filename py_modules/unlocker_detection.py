@@ -75,16 +75,11 @@ def currently_installed(directory: str) -> str | None:
 
 
 def recommended_default(directory: str) -> str:
-    """SmokeAPI is the modern, actively-maintained pick over CreamAPI when both would
-    apply (same marker file) — matches CreamInstaller's own default preference."""
-    if _steamworks_marker_present(directory):
-        return "smokeapi"
-    if screamapi.detected(directory):
-        return "screamapi"
-    if uplay_r1.detected(directory):
-        return "uplay_r1"
-    if uplay_r2.detected(directory):
-        return "uplay_r2"
+    """Default to the SmokeAPI setup tested on Risk of Rain 2.
+
+    Detection remains visible for choosing alternatives. Existing installations
+    are selected from install_state instead of this default.
+    """
     return "smokeapi"
 
 
