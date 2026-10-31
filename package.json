@@ -1,6 +1,6 @@
 {
   "name": "creamdeck",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Decky Loader plugin porting CreamInstaller's Steam DLC unlocking to Steam Deck.",
   "type": "module",
   "scripts": {
