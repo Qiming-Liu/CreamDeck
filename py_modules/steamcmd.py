@@ -1,0 +1,356 @@
+"""
+Port of CreamInstaller/Platforms/Steam/SteamCMD.cs, trimmed down for the
+single-game-on-demand flow (no batching/parallel locks — the desktop version
+needed those because it scanned a whole library at once; here we only ever
+query one appid at a time, right after the user opens that game's page).
+
+The public SteamCMD mirror and store DLC catalog are combined: a nonempty
+depot list can still omit ownership-only expansions. The local SteamCMD
+fallback checks build ids; explicit refresh bypasses each source's cache.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import subprocess
+import tarfile
+import time
+import urllib.request
+from typing import Optional, TypedDict
+
+import decky
+import steam_store_api
+import steamcmd_webapi
+from helpers import get_ssl_context  # type: ignore
+from vdf_lite import get_child, parse
+from atomic_json import write_json
+
+LINUX_STEAMCMD_URL = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
+
+
+class SteamCmdUnavailable(Exception):
+    """Raised when steamcmd can't be downloaded/installed (network, TLS, disk, etc)."""
+
+
+def _steamcmd_dir() -> str:
+    return os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "steamcmd")
+
+
+def _steamcmd_bin() -> str:
+    return os.path.join(_steamcmd_dir(), "steamcmd.sh")
+
+
+def _appinfo_cache_dir() -> str:
+    path = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "appinfo")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+async def ensure_installed() -> None:
+    if os.path.isfile(_steamcmd_bin()):
+        return
+
+    def _download_and_extract() -> None:
+        os.makedirs(_steamcmd_dir(), exist_ok=True)
+        archive_path = os.path.join(_steamcmd_dir(), "steamcmd_linux.tar.gz")
+        with urllib.request.urlopen(LINUX_STEAMCMD_URL, timeout=15, context=get_ssl_context()) as response:
+            with open(archive_path, "wb") as f:
+                f.write(response.read())
+        with tarfile.open(archive_path) as tar:
+            tar.extractall(_steamcmd_dir())
+        os.remove(archive_path)
+        os.chmod(_steamcmd_bin(), 0o755)
+
+    try:
+        await asyncio.get_event_loop().run_in_executor(None, _download_and_extract)
+    except (OSError, tarfile.TarError) as e:
+        decky.logger.error(f"[SteamCMD] Failed to download/install steamcmd: {e}")
+        raise SteamCmdUnavailable(str(e)) from e
+
+
+async def _run_app_info_print(app_id: str) -> str:
+    """Runs `steamcmd +login anonymous +app_info_print <appid> +quit` and returns the raw VDF block."""
+    try:
+        await ensure_installed()
+    except SteamCmdUnavailable:
+        return ""
+
+    def _run() -> str:
+        process = subprocess.run(
+            [_steamcmd_bin(), "+login", "anonymous", "+app_info_print", app_id, "+quit"],
+            cwd=_steamcmd_dir(),
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        output = process.stdout or ""
+        open_bracket = output.find("{")
+        close_bracket = output.rfind("}")
+        if open_bracket == -1 or close_bracket == -1 or close_bracket <= open_bracket:
+            return ""
+        return f'"{app_id}"\n' + output[open_bracket:close_bracket + 1]
+
+    return await asyncio.get_event_loop().run_in_executor(None, _run)
+
+
+class DlcInfo(TypedDict):
+    id: str
+    name: str
+    # Whether this DLC has its own depot in the base game's depot list (see
+    # https://steamdb.info/app/<id>/depots/) — i.e. it ships actual content
+    # files rather than just an ownership flag. An unlocker only spoofs
+    # ownership; it never downloads those files, so a DLC with its own depot
+    # can still fail to load its content post-unlock if the account never
+    # owned it. None means this couldn't be determined (the depot data
+    # itself was unavailable, e.g. the store-page DLC id fallback below).
+    has_depot: Optional[bool]
+
+
+class AppInfo(TypedDict):
+    app_id: str
+    name: str
+    dlcs: list[DlcInfo]
+    updated_at: float
+    stale: bool
+
+
+def _vdf_cache_path(app_id: str) -> str:
+    return os.path.join(_appinfo_cache_dir(), f"{app_id}.vdf")
+
+
+async def _get_app_data_from_local_cmd(app_id: str, branch: str, build_id: int, force: bool = False) -> Optional[dict]:
+    """Runs (or reuses a cached run of) `steamcmd +app_info_print`, retrying if the
+    cached copy's buildid for `branch` is older than `build_id` (the game update
+    Steam actually has installed) — port of GetAppInfo's staleness-check loop."""
+    cache_file = _vdf_cache_path(app_id)
+
+    attempts = 0
+    while attempts < 10:
+        attempts += 1
+        raw: Optional[str] = None
+        if os.path.isfile(cache_file) and not (force and attempts == 1):
+            with open(cache_file, "r", encoding="utf-8", errors="ignore") as f:
+                raw = f.read()
+        if not raw:
+            raw = await _run_app_info_print(app_id)
+            if not raw:
+                decky.logger.error(f"[SteamCMD] app_info_print produced no output for {app_id}")
+                return None
+            with open(cache_file, "w", encoding="utf-8") as f:
+                f.write(raw)
+
+        data = parse(raw)
+        app_data = get_child(data, app_id)
+        if not isinstance(app_data, dict):
+            os.remove(cache_file)
+            return None
+
+        app_type = get_child(get_child(app_data, "common"), "type")
+        if app_type is not None and app_type != "Game":
+            return app_data
+
+        cached_build_id = get_child(app_data, "depots", "branches", branch, "buildid")
+        if cached_build_id is None:
+            return app_data
+        try:
+            cached_build_id_int = int(cached_build_id)
+        except ValueError:
+            return app_data
+
+        if cached_build_id_int >= build_id:
+            return app_data
+
+        # Cache is for an older build than what's actually installed — drop it (and its
+        # DLC caches) and loop around to re-fetch.
+        decky.logger.info(f"[SteamCMD] Cached appinfo for {app_id} is stale (cached buildid {cached_build_id_int} < {build_id}), refreshing")
+        for dlc_id in _extract_dlc_ids(app_data):
+            dlc_cache_file = _vdf_cache_path(dlc_id)
+            if os.path.isfile(dlc_cache_file):
+                os.remove(dlc_cache_file)
+        os.remove(cache_file)
+
+    return None
+
+
+def _extract_dlc_ids(app_data: dict) -> set[str]:
+    dlc_ids: set[str] = set()
+
+    extended = get_child(app_data, "extended")
+    dlc_field = get_child(extended, "listofdlc")
+    if dlc_field:
+        for token in dlc_field.split(","):
+            token = token.strip()
+            if token.isdigit() and int(token) > 0:
+                dlc_ids.add(token)
+
+    depots = get_child(app_data, "depots")
+    if isinstance(depots, dict):
+        for key, depot in depots.items():
+            if not key.isdigit() or not isinstance(depot, dict):
+                continue
+            dlc_app_id = get_child(depot, "dlcappid")
+            if dlc_app_id and str(dlc_app_id).isdigit() and int(dlc_app_id) > 0:
+                dlc_ids.add(str(dlc_app_id))
+
+    return dlc_ids
+
+
+def _dlc_ids_with_depot(app_data: dict) -> set[str]:
+    """DLC ids that have at least one depot of their own in the base game's
+    depot list (depot.dlcappid) — the same data steamdb.info's "Depots" tab
+    for a game shows. Only meaningful when `depots` itself is actually
+    present; callers must check that separately, since an empty/missing
+    section means "unknown", not "no DLC has a depot"."""
+    dlc_ids: set[str] = set()
+
+    depots = get_child(app_data, "depots")
+    if isinstance(depots, dict):
+        for key, depot in depots.items():
+            if not key.isdigit() or not isinstance(depot, dict):
+                continue
+            dlc_app_id = get_child(depot, "dlcappid")
+            if dlc_app_id and str(dlc_app_id).isdigit() and int(dlc_app_id) > 0:
+                dlc_ids.add(str(dlc_app_id))
+
+    return dlc_ids
+
+
+def _dlc_name_from_cache(dlc_id: str) -> Optional[str]:
+    """Best-effort DLC display name from whichever cache (web API or local VDF) we
+    might already have for it, without triggering a new query."""
+    cmd_json_file = os.path.join(_appinfo_cache_dir(), f"{dlc_id}.cmd.json")
+    if os.path.isfile(cmd_json_file):
+        try:
+            with open(cmd_json_file, "r", encoding="utf-8") as f:
+                dlc_data = json.load(f)
+            name = get_child(get_child(dlc_data, "common"), "name")
+            if name:
+                return name
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    vdf_file = _vdf_cache_path(dlc_id)
+    if os.path.isfile(vdf_file):
+        with open(vdf_file, "r", encoding="utf-8", errors="ignore") as f:
+            dlc_raw = f.read()
+        dlc_data = get_child(parse(dlc_raw), dlc_id)
+        name = get_child(get_child(dlc_data, "common"), "name")
+        if name:
+            return name
+
+    return None
+
+
+async def _dlc_name(dlc_id: str) -> str:
+    """A DLC's display name — cached copy if we have one, otherwise a fresh (and
+    then cached) SteamCMD web API lookup. Unlike the base game, a DLC entry's own
+    "common" section (which is all a name needs) comes through fine even when the
+    web API can't see the base game's depots/extended data, so this is cheap and
+    reliable — falls back to the bare id only if the lookup itself fails."""
+    cached = _dlc_name_from_cache(dlc_id)
+    if cached:
+        return cached
+    dlc_data = await steamcmd_webapi.query(dlc_id, is_dlc=True)
+    name = get_child(get_child(dlc_data, "common"), "name") if dlc_data else None
+    return name or dlc_id
+
+
+async def get_app_info(app_id: str, branch: str = "public", build_id: int = 0, force: bool = False) -> Optional[AppInfo]:
+    # A depot list can contain just a soundtrack even though the game has
+    # ownership-only expansions. Always supplement it with the store catalog.
+    app_data, store_dlc_ids = await asyncio.gather(
+        steamcmd_webapi.query(app_id, force=force),
+        steam_store_api.get_dlc_ids(app_id, force=force),
+    )
+    source_cache = os.path.join(_appinfo_cache_dir(), f"{app_id}.cmd.json")
+    if app_data is None and store_dlc_ids is None:
+        app_data = await _get_app_data_from_local_cmd(app_id, branch, build_id, force=force)
+        source_cache = _vdf_cache_path(app_id)
+    if app_data is None and store_dlc_ids is None:
+        return None
+    app_data = app_data or {}
+
+    name = get_child(get_child(app_data, "common"), "name") or app_id
+    dlc_ids = _extract_dlc_ids(app_data)
+
+    depots = get_child(app_data, "depots")
+    depot_data_available = isinstance(depots, dict) and len(depots) > 0
+    depot_dlc_ids = _dlc_ids_with_depot(app_data) if depot_data_available else set()
+    updated_at = os.path.getmtime(source_cache) if os.path.isfile(source_cache) else time.time()
+
+    if store_dlc_ids is None and (not dlc_ids or (not get_child(app_data, "extended", "listofdlc")
+                                                and (app_data.get("_missing_token") or str(app_data.get("public_only")) == "1"))):
+        # Do not publish an explicitly partial anonymous response as a complete catalog.
+        return None
+    if store_dlc_ids is not None:
+        dlc_ids.update(store_dlc_ids)
+        store_cache = steam_store_api._cache_path(app_id)
+        if os.path.isfile(store_cache):
+            updated_at = min(updated_at, os.path.getmtime(store_cache))
+
+    complete_depots = depot_data_available and not app_data.get("_missing_token") and str(app_data.get("public_only")) != "1"
+
+    limit = asyncio.Semaphore(4)
+
+    async def describe(dlc_id):
+        async with limit:
+            try:
+                name = await asyncio.wait_for(_dlc_name(dlc_id), timeout=4)
+            except asyncio.TimeoutError:
+                name = dlc_id
+            return DlcInfo(
+                id=dlc_id,
+                name=name,
+                has_depot=True if dlc_id in depot_dlc_ids else False if complete_depots else None,
+            )
+    dlcs = await asyncio.gather(*(describe(i) for i in sorted(dlc_ids, key=int)))
+    return AppInfo(app_id=app_id, name=name, dlcs=dlcs, updated_at=updated_at,
+                   stale=time.time() - updated_at >= 600)
+
+
+def cached_page(app_id: str) -> dict:
+    if not app_id.isdigit():
+        return {}
+    try:
+        with open(os.path.join(_appinfo_cache_dir(), f"{app_id}.page.json"), encoding="utf-8") as source:
+            value = json.load(source)
+        if not isinstance(value, dict) or not isinstance(value.get("dlcs"), list) or not isinstance(value.get("updated_at"), (int, float)):
+            return {}
+        if any(not isinstance(d, dict) or not isinstance(d.get("id"), str) or not isinstance(d.get("name"), str)
+               or d.get("has_depot") not in (True, False, None) for d in value["dlcs"]):
+            return {}
+        return value
+    except (OSError, ValueError):
+        return {}
+
+
+_queries: dict[str, asyncio.Task] = {}
+
+
+async def get_page(app_id: str, branch: str, build_id: int, force: bool = False) -> dict:
+    cached = cached_page(app_id)
+    if cached and cached.get("catalog_version") == 2 and not force and time.time() - cached["updated_at"] < 600:
+        return {"success": True, **cached, "cached": True}
+
+    async def fetch():
+        try:
+            info = await asyncio.wait_for(get_app_info(app_id, branch, build_id, force=force), timeout=25)
+            if info is None:
+                raise ValueError("No app information")
+            page = {"dlcs": info["dlcs"], "updated_at": info.get("updated_at", time.time()), "catalog_version": 2}
+            write_json(os.path.join(_appinfo_cache_dir(), f"{app_id}.page.json"), page)
+            stale = info.get("stale", False)
+            return {"success": not stale, **page, "cached": stale,
+                    **({"error_code": "catalog_unavailable"} if stale else {})}
+        except Exception as error:
+            decky.logger.warning(f"DLC refresh failed for {app_id}: {error}")
+            return {"success": False, **cached_page(app_id), "cached": bool(cached_page(app_id)), "error_code": "catalog_unavailable"}
+
+    # Reopening a page must not start another identical network fallback chain.
+    task = _queries.get(app_id)
+    if task is None or task.done():
+        task = asyncio.create_task(fetch())
+        _queries[app_id] = task
+        task.add_done_callback(lambda done: _queries.pop(app_id, None) if _queries.get(app_id) is done else None)
+    return await asyncio.shield(task)
