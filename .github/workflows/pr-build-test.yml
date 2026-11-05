@@ -24,9 +24,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # No cache: pnpm here — that requires a committed pnpm-lock.yaml,
-          # which doesn't exist yet (nobody's run `pnpm install` locally to
-          # generate one). Re-add it once one's committed.
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
@@ -57,7 +54,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.14'
 
       - name: Syntax-check every module
         run: |

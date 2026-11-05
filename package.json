@@ -1,6 +1,6 @@
 {
   "name": "creamdeck",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Decky Loader plugin porting CreamInstaller's Steam DLC unlocking to Steam Deck.",
   "type": "module",
   "scripts": {
@@ -8,7 +8,9 @@
     "watch": "rollup -c -w",
     "dev": "node scripts/dev.mjs",
     "test:tooling": "node --test tests/tooling/*.test.mjs",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "pnpm run test:tooling && python -m unittest discover -s tests -v",
+    "package": "pnpm run build && python scripts/package_release.py",
+    "typecheck": "tsc --noEmit"
   },
   "repository": {
     "type": "git",
@@ -36,7 +38,8 @@
     "@types/react-dom": "19.1.1",
     "@types/webpack": "^5.28.5",
     "rollup": "^4.53.3",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "javascript-obfuscator": "4.1.1"
   },
   "dependencies": {
     "@decky/api": "^1.1.3",

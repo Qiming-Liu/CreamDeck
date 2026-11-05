@@ -52,9 +52,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # No cache: pnpm here — that requires a committed pnpm-lock.yaml,
-          # which doesn't exist yet (nobody's run `pnpm install` locally to
-          # generate one). Re-add it once one's committed.
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
 
       - name: Bump version
         id: bump
@@ -103,27 +105,13 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Resolved release tag: $TAG"
 
-      - name: Stage plugin package
+      - name: Verify
         run: |
-          mkdir -p package/CreamDeck
-          # Deliberately an allowlist, not a whole-repo copy: anything the repo
-          # accumulates that isn't one of these (screenshots, tests, CI config,
-          # lockfiles, __pycache__) never makes it into the shipped zip.
-          #
-          # package.json MUST be included: decky-loader's backend only picks the
-          # modern ESMODULE_V1 load path (dynamic import(), supports the `export`
-          # statement our rollup bundle ends with) when it finds a package.json
-          # with "type": "module" inside the installed plugin directory. Without
-          # it, decky-loader falls back to eval()'ing dist/index.js as a legacy
-          # IIFE bundle, which chokes on that `export` with "Unexpected token
-          # 'export'" (see SteamDeckHomebrew/decky-loader's plugin.py).
-          cp plugin.json package.json main.py package/CreamDeck/
-          cp -r py_modules package/CreamDeck/
-          cp -r resources package/CreamDeck/
-          cp -r dist package/CreamDeck/
-          cp LICENSE README.md package/CreamDeck/
-          cd package
-          zip -r "../CreamDeck.${{ steps.vars.outputs.tag }}.zip" CreamDeck
+          pnpm run typecheck
+          pnpm test
+
+      - name: Package protected plugin
+        run: python scripts/package_release.py --output "CreamDeck.${{ steps.vars.outputs.tag }}.zip"
 
       - name: Publish release
         uses: softprops/action-gh-release@v3

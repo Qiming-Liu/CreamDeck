@@ -7,12 +7,49 @@ GUEST_HOME="$(getent passwd "$GUEST_UID" | cut -d: -f6)"
 DEV="/tmp/creamdeck-dev-$GUEST_UID"
 PLUGIN="$GUEST_HOME/homebrew/plugins/CreamDeck"
 OVERRIDE="/etc/systemd/system/plugin_loader.service.d/90-creamdeck-remote-dev.conf"
+# Persistent, root-owned recovery for sessions that end without cleanup
+# (forced power-off, SIGKILL). /tmp is cleared on boot, leaving dangling links.
+RECOVER="/var/lib/creamdeck-dev/recover-$GUEST_UID.sh"
 ENTRIES=(dist py_modules main.py package.json plugin.json resources)
 test ! -L "$DEV" && [[ $(stat -c %u "$DEV") == "$GUEST_UID" ]]
 exec 9>"$DEV/session.lock"
 flock -n 9 || { echo '[dev] Another development session is running.' >&2; exit 1; }
 test -d "$PLUGIN" || { echo '[dev] Install the ZIP first.' >&2; exit 1; }
 linked=0
+
+restore_entries() {
+    local name target backup
+    for name in "${ENTRIES[@]}"; do
+        target="$PLUGIN/$name"
+        backup="$target.dev-backup"
+        if [[ -L "$target" && $(readlink "$target") == "$DEV/current/$name" ]]; then
+            rm -- "$target"
+            if [[ -e "$backup" || -L "$backup" ]]; then mv -- "$backup" "$target"; fi
+        elif [[ ! -e "$target" && ! -L "$target" && ( -e "$backup" || -L "$backup" ) ]]; then
+            mv -- "$backup" "$target"
+        fi
+    done
+}
+
+install_recovery() {
+    mkdir -p -- "$(dirname "$RECOVER")" "$(dirname "$OVERRIDE")"
+    {
+        printf '#!/usr/bin/env bash\nset -u\n'
+        declare -p DEV PLUGIN OVERRIDE RECOVER ENTRIES
+        declare -f restore_entries
+        cat <<'EOF'
+# Decky runs this before starting. A held lock means a live session owns the links.
+if [[ -e "$DEV/session.lock" ]] && ! flock -n "$DEV/session.lock" true; then exit 0; fi
+restore_entries
+rm -f -- "$OVERRIDE" "$RECOVER"
+echo '[dev] Restored CreamDeck after an interrupted development session.'
+EOF
+    } > "$RECOVER"
+    chmod 700 "$RECOVER"
+    printf '[Service]\nEnvironment=LIVE_RELOAD=1\nExecStartPre=-/usr/bin/bash %s\n' "$RECOVER" > "$OVERRIDE"
+    sync
+}
+
 cleanup() {
     trap - EXIT
     # A second Ctrl+C or lost SSH TTY must not interrupt file restoration.
@@ -22,17 +59,8 @@ cleanup() {
     if (( linked )); then
         echo '[dev] Stopping Decky (up to 10 seconds)…'
         timeout --kill-after=1s 10s systemctl stop plugin_loader || echo '[dev] Decky stop is still pending; continuing file restoration.'
-        for name in "${ENTRIES[@]}"; do
-            target="$PLUGIN/$name"
-            backup="$target.dev-backup"
-            if [[ -L "$target" && $(readlink "$target") == "$DEV/current/$name" ]]; then
-                rm -- "$target"
-                if [[ -e "$backup" || -L "$backup" ]]; then mv -- "$backup" "$target"; fi
-            elif [[ ! -e "$target" && ! -L "$target" && ( -e "$backup" || -L "$backup" ) ]]; then
-                mv -- "$backup" "$target"
-            fi
-        done
-        rm -f -- "$OVERRIDE"
+        restore_entries
+        rm -f -- "$OVERRIDE" "$RECOVER"
         timeout --kill-after=1s 3s systemctl daemon-reload
         if [[ $(timeout --kill-after=1s 2s systemctl is-system-running 2>/dev/null) != stopping ]]; then
             echo '[dev] Requesting Decky startup…'
@@ -87,6 +115,9 @@ apply_pending
 [[ -f "$DEV/current/main.py" ]] || { echo '[dev] Initial source upload is missing.' >&2; exit 1; }
 systemctl stop plugin_loader
 linked=1
+# Register recovery before replacing any installed file.
+install_recovery
+systemctl daemon-reload
 for name in "${ENTRIES[@]}"; do
     target="$PLUGIN/$name"
     backup="$target.dev-backup"
@@ -95,9 +126,7 @@ for name in "${ENTRIES[@]}"; do
     if [[ -e "$target" || -L "$target" ]]; then mv -- "$target" "$backup"; fi
     ln -s -- "$DEV/current/$name" "$target"
 done
-mkdir -p -- "$(dirname "$OVERRIDE")"
-printf '[Service]\nEnvironment=LIVE_RELOAD=1\n' | tee "$OVERRIDE" >/dev/null
-systemctl daemon-reload
+sync
 systemctl start plugin_loader
 reload_after_start
 touch "$DEV/heartbeat"
