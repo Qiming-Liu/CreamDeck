@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 .env
 .decky-dev/
+
+# Local AI agent notes (shared across Decky plugins)
+AGENTS.md

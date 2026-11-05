@@ -12,20 +12,37 @@ import {
 import type { FC } from "react";
 
 const MENU_ITEM_KEY = "creamdeck";
+const APP_PROPERTIES_ITEM = "AppProperties";
+
+const hasOnSelected = (item: any, marker: string) => {
+  const onSelected = item?.onSelected ?? item?.props?.onSelected;
+  return typeof onSelected === "function" && onSelected.toString().includes(marker);
+};
+
+const containsMenuItem = (item: any, marker: string) =>
+  !!findInReactTree(item, (x) => hasOnSelected(x, marker));
+
+const asMenuItems = (items: any): any[] | undefined => {
+  if (Array.isArray(items)) return items;
+  if (!items || typeof items !== "object") return undefined;
+  return findInReactTree(
+    items,
+    (node) => Array.isArray(node) && node.some((item) => containsMenuItem(item, APP_PROPERTIES_ITEM)),
+  );
+};
 
 // Always add before "Properties..."
-const spliceMenuItem = (children: any[], appid: number) => {
-  if (!Array.isArray(children)) return;
+const spliceMenuItem = (children: any, appid: number) => {
+  const menuItems = asMenuItems(children);
+  if (!menuItems) return;
   // Search recursively to support Steam's grouped/wrapped items.
   // Shared menu components also render submenus, which have no Properties item.
-  const propertiesMenuItemIdx = children.findIndex((item) =>
-    findInReactTree(item, (x) => x?.onSelected?.toString().includes("AppProperties")),
-  );
+  const propertiesMenuItemIdx = menuItems.findIndex((item) => containsMenuItem(item, APP_PROPERTIES_ITEM));
   if (propertiesMenuItemIdx < 0) return;
-  const propertiesMenuItem = children[propertiesMenuItemIdx];
-  handleItemDupes(children);
-  children.splice(
-    children.indexOf(propertiesMenuItem),
+  const propertiesMenuItem = menuItems[propertiesMenuItemIdx];
+  handleItemDupes(menuItems);
+  menuItems.splice(
+    menuItems.indexOf(propertiesMenuItem),
     0,
     <MenuItem
       key={MENU_ITEM_KEY}
@@ -40,35 +57,40 @@ const spliceMenuItem = (children: any[], appid: number) => {
 
 // Check if correct menu by looking at the code of the onSelected function.
 // Should be enough to ignore the screenshots and other menus.
-const isOpeningAppContextMenu = (items: any[]) => {
-  if (!items?.length) {
+const isOpeningAppContextMenu = (items: any) => {
+  const menuItems = asMenuItems(items);
+  if (!menuItems) {
     return false;
   }
-  return !!findInReactTree(items, (x) => x?.props?.onSelected?.toString().includes("launchSource"));
+  return !!findInReactTree(menuItems, (x) => hasOnSelected(x, "launchSource"));
 };
 
-const handleItemDupes = (items: any[]) => {
-  for (let i = items.length - 1; i >= 0; i--) {
-    if (items[i]?.key === MENU_ITEM_KEY) items.splice(i, 1);
+const handleItemDupes = (items: any) => {
+  const menuItems = asMenuItems(items);
+  if (!menuItems) return;
+  for (let i = menuItems.length - 1; i >= 0; i--) {
+    if (menuItems[i]?.key === MENU_ITEM_KEY) menuItems.splice(i, 1);
   }
 };
 
-const patchMenuItems = (menuItems: any[], appid: number) => {
+const patchMenuItems = (menuItems: any, appid: number) => {
+  const items = asMenuItems(menuItems);
+  if (!items) return;
   let updatedAppid: number = appid;
   // find the first menu component that has the correct appid, sometimes the one passed is cached from another context menu
-  const parentOverview = menuItems.find(
+  const parentOverview = items.find(
     (x: any) => x?._owner?.pendingProps?.overview?.appid && x._owner.pendingProps.overview.appid !== appid,
   );
   if (parentOverview) {
     updatedAppid = parentOverview._owner.pendingProps.overview.appid;
   }
   if (updatedAppid === appid) {
-    const foundApp = findInTree(menuItems, (x) => x?.app?.appid, { walkable: ["props", "children"] });
+    const foundApp = findInTree(items, (x) => x?.app?.appid, { walkable: ["props", "children"] });
     if (foundApp) {
       updatedAppid = foundApp.app.appid;
     }
   }
-  spliceMenuItem(menuItems, updatedAppid);
+  spliceMenuItem(items, updatedAppid);
 };
 
 /**

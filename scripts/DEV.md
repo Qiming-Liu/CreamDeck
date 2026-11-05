@@ -24,7 +24,7 @@ pnpm dev
 
 The Node watcher builds the frontend locally and uploads `dist`, `main.py`,
 `py_modules`, `resources`, `package.json`, and `plugin.json` over SSH. CreamDeck
-needs no Python dependency vendoring or generated GCM core. Its bundled unlocker
+needs no Python dependency vendoring. Its bundled unlocker
 DLLs are included in the mirror so resource lookups still work through symlinks.
 
 A single remote SSH TTY session asks for sudo if needed, backs up the installed
@@ -54,6 +54,12 @@ Decky startup without waiting for it to finish. A lost SSH connection is normall
 detected after roughly nine seconds of unanswered keepalives. The host then
 terminates remaining children and restores terminal mode. Exit `pnpm dev` before
 powering off the VM: a powered-off guest cannot finish restoring its plugin files.
+If the session ends without cleanup anyway (forced power-off, killed process),
+the `/tmp` mirror disappears and the installed entries become dangling links.
+To cover this, the session registers `/var/lib/creamdeck-dev/recover-<uid>.sh` as
+an `ExecStartPre` in its Decky drop-in. When Decky next starts without a live
+session holding the lock, the script restores the `.dev-backup` entries and
+removes itself and the drop-in.
 
 Verification:
 
@@ -62,3 +68,20 @@ pnpm exec tsc --noEmit -p .
 pnpm run test:tooling
 python -m unittest discover -s tests -v
 ```
+
+## Protected release packaging
+
+Release packaging requires CPython 3.14, matching the target Decky runtime.
+Run `pnpm package` with that Python on PATH; normal builds and `pnpm dev`
+keep readable development files. The packager stages an isolated copy, obfuscates
+JavaScript without property/global renaming, and excludes source maps.
+Python implementations ship as packed bytecode; Decky's required `main.py`
+contains only a loader. Packing is reversible and is not encryption.
+
+Project Python docstrings and line tables are removed recursively, and code
+filenames are relative to the plugin root. Assertions and `__debug__` behavior
+are preserved. Vendored third-party Python retains its documentation and line
+metadata for compatibility. Required runtime errors/logging remain available,
+but release tracebacks have reduced line detail. Prebuilt native dependencies
+are copied unchanged; this process does not strip or rebuild their symbols.
+Keep credentials outside distributable code; packing cannot protect secrets.

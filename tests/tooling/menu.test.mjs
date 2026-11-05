@@ -46,12 +46,10 @@ function menuHarness() {
     require(name) {
       if (name === "@decky/ui") return ui;
       if (name === "react/jsx-runtime") return { jsx: (type, props, key) => ({ type, props, key }) };
-      return { menuItemLabel: () => "GCM", gamePageRoute: (id) => `/gcm/${id}` };
+      return {};
     },
   });
-  // Support both plugins' public patch installation APIs.
-  const cleanup = module.exports.LibraryContextMenu
-    ? module.exports.default(Library).unpatch : module.exports.default();
+  const cleanup = module.exports.default(Library).unpatch;
   new Library().render();
   component.type();
   return {
@@ -66,7 +64,7 @@ function menuHarness() {
 
 const launch = () => ({ props: { onSelected: function () { return "launchSource"; } } });
 const properties = () => ({ props: { onSelected: function () { return "AppProperties"; } } });
-const isPlugin = (item) => ["creamdeck", "game-cheats-manager"].includes(item?.key);
+const isPlugin = (item) => item?.key === "creamdeck";
 
 test("cleanup removes nested hooks after repeated menu renders", () => {
   const h = menuHarness();
@@ -92,7 +90,7 @@ for (const path of ["render", "refresh", "outer"]) {
       assert.equal(entries.length, 1);
       assert.equal(items.indexOf(entries[0]), items.indexOf(props) - 1);
       entries[0].props.onSelected();
-      assert.match(h.route(), /\/(creamdeck|gcm)\/123$/);
+      assert.match(h.route(), /\/creamdeck\/123$/);
     } finally { h.cleanup(); }
   });
 
@@ -133,6 +131,43 @@ for (const path of ["render", "refresh", "outer"]) {
       const entries = items.filter(isPlugin);
       assert.equal(entries.length, 1);
       assert.equal(items.indexOf(entries[0]), items.indexOf(wrapped) - 1);
+    } finally { h.cleanup(); }
+  });
+
+  test(`${path}: a wrapped item list still receives one working entry`, () => {
+    const h = menuHarness();
+    try {
+      const props = properties();
+      const items = [launch(), props];
+      const wrapped = { props: { children: items } };
+      h[path](wrapped);
+      h[path](wrapped);
+      const entries = items.filter(isPlugin);
+      assert.equal(entries.length, 1);
+      assert.equal(items.indexOf(entries[0]), items.indexOf(props) - 1);
+      entries[0].props.onSelected();
+      assert.match(h.route(), /\/creamdeck\/123$/);
+    } finally { h.cleanup(); }
+  });
+
+  test(`${path}: a deeply wrapped item list still receives one entry`, () => {
+    const h = menuHarness();
+    try {
+      const props = properties();
+      const items = [launch(), props];
+      const wrapped = { props: { children: { props: { children: items } } } };
+      h[path](wrapped);
+      h[path](wrapped);
+      const entries = items.filter(isPlugin);
+      assert.equal(entries.length, 1);
+      assert.equal(items.indexOf(entries[0]), items.indexOf(props) - 1);
+    } finally { h.cleanup(); }
+  });
+
+  test(`${path}: unrelated non-array children are ignored`, () => {
+    const h = menuHarness();
+    try {
+      assert.doesNotThrow(() => h[path]({ props: { children: "Hide" } }));
     } finally { h.cleanup(); }
   });
 }

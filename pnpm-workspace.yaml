@@ -1,0 +1,6 @@
+peerDependencyRules:
+  ignoreMissing:
+    - react
+    - react-dom
+allowBuilds:
+  javascript-obfuscator: false
