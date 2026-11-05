@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: CreamInstaller (the original Windows tool this plugin ports)
+    url: https://github.com/FroggMaster/CreamInstaller
+    about: General questions about how DLC unlocking (SmokeAPI/CreamAPI/etc.) works are better asked there, unless they're specific to running it on Steam Deck via this plugin.
+  - name: Decky Loader
+    url: https://github.com/SteamDeckHomebrew/decky-loader
+    about: If your issue is with Decky Loader itself (plugin won't load, QAM issues, etc.) rather than with CreamDeck specifically, please report it there instead.
