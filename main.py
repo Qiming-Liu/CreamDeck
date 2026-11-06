@@ -12,6 +12,7 @@ import install_state
 import steam_library
 import steamcmd
 import unlocker_detection
+import update_check
 
 
 def failure(error):
@@ -64,6 +65,7 @@ class Plugin:
                     labels = {u["key"]: u["label"] for u in unlocker_detection.UNLOCKERS}
                     integrity_error = f"{labels.get(installed, 'Nothing')} / {labels.get(disk, 'Nothing')}: {', '.join(changed) or status}"
                 catalog = steamcmd.cached_page(app_id)
+                files = manager.file_report(directory, state) if installed else []
                 return {
                     "found": True, "name": game["name"], "dlcs": catalog.get("dlcs", []),
                     "dlc_updated_at": catalog.get("updated_at"), "dlc_cached": bool(catalog),
@@ -74,6 +76,9 @@ class Plugin:
                     "integrity_error": integrity_error, "file_status": status,
                     "changed_files": changed, "target_directory": relative, "targets": options,
                     "resource_version": (state or {}).get("resource_version"),
+                    "has_record": state is not None, "files": files,
+                    "external_files": manager.unlocker_files(directory) if status == "external" else [],
+                    "api_dlls": manager.present_api_dlls(directory),
                 }
             except Exception as error:
                 return {"found": False, **failure(error)}
@@ -173,6 +178,49 @@ class Plugin:
     @action_log.log_call
     async def force_cleanup(self, app_id: str):
         return await self._remove(app_id)
+
+    @action_log.log_call
+    async def list_installed_games(self):
+        """Read-only summary of recorded installations; never locks, recovers or hashes."""
+        def collect():
+            games = []
+            for app_id, state in install_state.all_states().items():
+                if not state.get("installed"):
+                    continue
+                game = steam_library.find_game(app_id)
+                games.append({"app_id": app_id, "name": game["name"] if game else None,
+                              "unlocker": state["unlocker"], "proxy": state["proxy"],
+                              "dlc_count": len(state["enabled_dlc_ids"])})
+            return sorted(games, key=lambda game: ((game["name"] or "").casefold(), game["app_id"]))
+        try:
+            return {"success": True, "games": await asyncio.to_thread(collect)}
+        except Exception as error:
+            return failure(error)
+
+    async def get_action_log(self, limit: int = 200):
+        try:
+            limit = max(1, min(int(limit), 1000))
+            return {"success": True, "lines": await asyncio.to_thread(action_log.read_tail, limit)}
+        except Exception as error:
+            return failure(error)
+
+    async def clear_action_log(self):
+        try:
+            await asyncio.to_thread(action_log.clear)
+            action_log.log_event("action log cleared")
+            return {"success": True}
+        except Exception as error:
+            return failure(error)
+
+    async def get_update_info(self, force: bool = False):
+        current = decky.DECKY_PLUGIN_VERSION
+        try:
+            latest = await asyncio.to_thread(update_check.latest_version, bool(force))
+        except Exception as error:  # noqa: BLE001 - the badge is optional
+            decky.logger.info(f"Update check failed: {error!r}")
+            latest = None
+        return {"current": current, "latest": latest if update_check.newer(latest, current) else None,
+                "os": await asyncio.to_thread(update_check.os_version)}
 
     async def _main(self):
         action_log.log_event("plugin loaded")

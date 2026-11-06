@@ -34,7 +34,7 @@ def _get_logger() -> logging.Logger:
     logger.setLevel(logging.INFO)
     logger.propagate = False  # this is a separate log, not a mirror of decky's own
 
-    log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, _LOG_FILE_NAME)
+    log_path = _log_path()
     handler = logging.handlers.RotatingFileHandler(
         log_path, maxBytes=_MAX_BYTES, backupCount=_BACKUP_COUNT, encoding="utf-8"
     )
@@ -77,6 +77,39 @@ def log_event(message: str) -> None:
 
 def log_warning(message: str) -> None:
     _get_logger().warning(message)
+
+
+def _log_path() -> str:
+    return os.path.join(decky.DECKY_PLUGIN_LOG_DIR, _LOG_FILE_NAME)
+
+
+def read_tail(limit: int = 200) -> list[str]:
+    """The last `limit` lines of the current log file, oldest first."""
+    path = _log_path()
+    if not os.path.isfile(path):
+        return []
+    with open(path, "rb") as source:
+        source.seek(0, os.SEEK_END)
+        size = source.tell()
+        # Lines are short; reading a bounded tail avoids loading 5 MB files.
+        source.seek(max(0, size - 256 * 1024))
+        data = source.read()
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    if size > 256 * 1024:
+        lines = lines[1:]
+    return lines[-limit:]
+
+
+def clear() -> None:
+    """Empty the log and its rotated backups. The open handler keeps appending."""
+    path = _log_path()
+    for index in range(1, _BACKUP_COUNT + 1):
+        backup = f"{path}.{index}"
+        if os.path.isfile(backup):
+            os.remove(backup)
+    if os.path.isfile(path):
+        with open(path, "w", encoding="utf-8"):
+            pass
 
 
 def _summarize(result: Any) -> str:

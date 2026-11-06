@@ -264,6 +264,68 @@ async def transaction(app_id: str, directory: str, mutate, commit) -> None:
 
 
 
+API_DLLS = {os.path.basename(getattr(smokeapi, f"_api{bit}_path")("")):
+            os.path.basename(getattr(smokeapi, f"_api{bit}_backup_path")("")) for bit in ("32", "64")}
+CONFIGS = {os.path.basename(module._config_path("")) for module in MODULES.values()}
+
+
+def _role(name: str) -> str:
+    if name in API_DLLS:
+        return "dll"
+    if name in API_DLLS.values():
+        return "backup"
+    if name in CONFIGS:
+        return "config"
+    if name.endswith(".dll"):
+        return "proxy"
+    return "record"
+
+
+def present_api_dlls(directory: str) -> list[str]:
+    return [name for name in sorted(API_DLLS) if os.path.isfile(os.path.join(directory, name))]
+
+
+def unlocker_files(directory: str) -> list[str]:
+    """Names of every unlocker-related file present, for read-only display."""
+    return [name for name in sorted(NAMES) if os.path.isfile(os.path.join(directory, name))]
+
+
+def file_report(directory: str, state: dict) -> list[dict]:
+    """Describe what uninstall would do with each recorded file, without changing anything.
+
+    Mirrors clean_owned: unchanged files are removed, an unchanged backup is
+    moved back over our unchanged DLL, and anything modified is kept.
+    """
+    expected = state.get("files") or {}
+    if not expected:
+        try:
+            expected = legacy_files(directory, state)
+        except OperationError:
+            return []
+    actual = snapshot(directory)
+    backups_ok = all(actual.get(backup) == expected[backup]
+                     for backup in API_DLLS.values() if backup in expected)
+    rows = []
+    for name in sorted(expected):
+        status = "same" if actual.get(name) == expected[name] else "missing" if name not in actual else "modified"
+        role = _role(name)
+        if not backups_ok:
+            action = "blocked"
+        elif role == "backup":
+            dll = next(dll for dll, backup in API_DLLS.items() if backup == name)
+            action = "restore" if actual.get(dll) in (None, expected.get(dll)) else "delete"
+        elif role == "dll" and API_DLLS[name] in expected:
+            action = "restore" if status != "modified" else "keep"
+        else:
+            action = "none" if status == "missing" else "delete" if status == "same" else "keep"
+        rows.append({"name": name, "role": role, "status": status, "action": action})
+    # A second installation beside our own files is reported but never touched.
+    for name in sorted(CONFIGS - expected.keys()):
+        if name in actual:
+            rows.append({"name": name, "role": "config", "status": "foreign", "action": "keep"})
+    return rows
+
+
 def clean_owned(directory: str, state: dict) -> list[str]:
     """Keep modified files; restore original DLLs only over our unchanged DLL."""
     expected = state.get("files", {})
