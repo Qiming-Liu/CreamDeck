@@ -1,107 +1,161 @@
-import { ConfirmModal, DialogButton, Focusable, Router, SidebarNavigation, showModal, Spinner } from "@decky/ui";
+import { toaster } from "@decky/api";
+import { ConfirmModal, Focusable, showModal, Spinner } from "@decky/ui";
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { FaListUl, FaSlidersH, FaWrench } from "react-icons/fa";
-import { buttonStyle, secondaryStyle } from "../components/GameRow";
-import { proxyChoices, sameIds } from "../domain/gamePage";
+import { C, Dot, Icons, PulseDot, STYLES } from "../components/ui";
+import { applicableIds } from "../domain/gamePage";
+import { unlockerLabel } from "../domain/display";
 import { useGamePage } from "../hooks/useGamePage";
-import { forceCleanup, installDlcUnlocker, uninstallDlcUnlocker } from "../utils/backend";
-import { useWineDllOverride } from "../hooks/useWineDllOverride";
+import { useUpdateInfo } from "../hooks/useUpdateInfo";
+import { useAppDetails, useWineDllOverride } from "../hooks/useWineDllOverride";
+import { installDlcUnlocker, uninstallDlcUnlocker } from "../utils/backend";
 import { useTranslations } from "../utils/i18n";
-import DlcPanel from "./DlcPanel";
-import InstallPanel from "./InstallPanel";
-import MaintenancePanel from "./MaintenancePanel";
+import AboutTab from "./AboutTab";
+import DlcTab from "./DlcTab";
+import InstallTab, { LocationModal } from "./InstallTab";
+import MaintenanceTab from "./MaintenanceTab";
+import UnsupportedTab from "./UnsupportedTab";
 
-// Leave room for Big Picture's fixed status and footer bars.
-const PAGE_TOP_OFFSET = 56;
-const PAGE_BOTTOM_OFFSET = 56;
-// Steam's paged-settings content retains this inset even with padding="none".
-const SIDEBAR_CONTENT_TOP_INSET = 40;
+// Big Picture draws its status bar over the top of full-page routes.
+export const PAGE_TOP_OFFSET = 40;
+// ...and its button legend over the bottom.
+export const PAGE_BOTTOM_OFFSET = 42;
+
+export type Tab = "dlc" | "install" | "maintenance" | "about";
+const TABS: Tab[] = ["dlc", "install", "maintenance", "about"];
+
+function initialTab(): Tab {
+  const suffix = window.location.pathname.match(/\/creamdeck\/\d+\/(\w+)/)?.[1];
+  return TABS.includes(suffix as Tab) ? suffix as Tab : "dlc";
+}
 
 export default function CreamDeckPage() {
   const t = useTranslations();
   const appId = window.location.pathname.match(/\/creamdeck\/(\d+)/)?.[1] ?? null;
-  const { page, draft, setDraft, loading, busy, error, notice, needsRefresh, preserved,
-    dlcLoading, dlcError, loadDlcs, load, action } = useGamePage(appId, t.operationError);
+  const game = useGamePage(appId, t.operationError);
+  const { page, draft, loading, busy, needsRefresh } = game;
+  const details = useAppDetails(Number(appId));
+  const update = useUpdateInfo();
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [launchBusy, setLaunchBusy] = useState(false);
-  const launch = useWineDllOverride(Number(appId), draft.proxyDll, !!page?.found && draft.proxy && proxyChoices(draft.unlocker).length > 0, setLaunchBusy);
-  const route = `/creamdeck/${appId}`;
+  const launch = useWineDllOverride(Number(appId), draft.proxyDll, !!page?.found && draft.proxy, details, setLaunchBusy);
   const installed = !!page?.installed;
+  const status = page?.file_status;
+  // Decided by the game's current compatibility tool, not by its platforms.
+  const unsupported = details.compatTool === "";
   const blocked = busy || launchBusy || loading || needsRefresh;
-  const dirty = installed && !sameIds(draft.enabledIds, page?.enabled_dlc_ids ?? []);
-  const label = page?.unlockers?.find(u => u.key === draft.unlocker)?.label ?? draft.unlocker;
+  const name = page?.name || "";
 
-  const install = () => {
-    if (!appId || blocked) return;
-    void action(() => installDlcUnlocker(appId, draft.unlocker, draft.enabledIds, draft.proxy, draft.proxyDll, page?.target_directory ?? "."), t.installSuccess, t.refreshFailed);
+  const notify = (title: string, body: string) => toaster.toast({ title, body, duration: 5000 });
+
+  const install = async () => {
+    if (!appId || !page?.found || blocked) return;
+    const ids = applicableIds(page.dlcs ?? [], draft.enabledIds);
+    const wasInstalled = installed;
+    const outcome = await game.action(() => installDlcUnlocker(appId, draft.unlocker, ids, draft.proxy,
+      draft.proxyDll, page.target_directory ?? "."));
+    if (!outcome) return;
+    if (!outcome.ok) {
+      notify(t.toastFailed(name), outcome.refreshFailed ? t.toastRefreshFailed : outcome.error);
+      return;
+    }
+    notify(wasInstalled ? t.toastApplied(name) : t.toastInstalled(name), t.toastDlcOn(ids.length));
+    // A proxy DLL only loads with its DLL override, so add it right away.
+    if (draft.proxy && !launch.enabled && launch.editable) void launch.toggle(true);
   };
-  const confirm = (cleanup: boolean) => {
+
+  const uninstall = () => {
     if (!appId) return;
-    showModal(<ConfirmModal strTitle={cleanup ? t.removeUnlockerFiles : t.uninstall}
-      strDescription={cleanup ? t.cleanupConfirm : t.uninstallConfirm}
-      strOKButtonText={cleanup ? t.removeUnlockerFiles : t.uninstall} strCancelButtonText={t.cancel}
-      onOK={() => { void action(() => cleanup ? forceCleanup(appId) : uninstallDlcUnlocker(appId), cleanup ? t.cleanupSuccess : t.uninstallSuccess, t.refreshFailed); }} />, window);
+    showModal(<ConfirmModal strTitle={t.uninstall} strDescription={t.uninstallConfirm}
+      strOKButtonText={t.uninstall} strCancelButtonText={t.cancel}
+      onOK={async () => {
+        const outcome = await game.action(() => uninstallDlcUnlocker(appId));
+        if (!outcome) return;
+        if (!outcome.ok) { notify(t.toastFailed(name), outcome.refreshFailed ? t.toastRefreshFailed : outcome.error); return; }
+        const kept = outcome.result.preserved_files?.length ?? 0;
+        notify(t.toastUninstalled(name), kept ? t.toastKept(kept) : t.toastRestored);
+      }} />, window);
   };
 
-  const header = <div style={{ flexShrink: 0, background: "#1b2029", paddingBottom: 12, marginBottom: 12 }}>
-    <Focusable flow-children="row" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <div style={{ flex: "1 1 0", minWidth: 0 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 600, margin: "0 0 5px", overflowWrap: "anywhere" }}>{page?.name || "CreamDeck"}</h2>
-        <div role="status" style={{ fontSize: 12, color: page?.integrity_error ? "#f0bd73" : dirty ? "#73c6f4" : "#aeb7c5" }}>
-          {page?.file_status === "external" ? t.filesExternal : page?.file_status === "legacy" ? t.filesLegacy : page?.integrity_error ? t.filesModified : installed ? `${t.filesHealthy} · ${label}${dirty ? ` · ${t.unsaved}` : ""}` : t.notInstalled}
-        </div>
-        {installed && draft.proxy && <div role="status" style={{ fontSize: 12, marginTop: 4, color: launch.enabled ? "#9bd9ae" : "#f0bd73" }}>
-          {launch.loading ? t.launchChecking : launch.enabled ? t.launchReady : t.launchRequired}
-        </div>}
-      </div>
-      {page?.found && <DialogButton style={buttonStyle} disabled={blocked || !!page.integrity_error || !page.dlc_cached || (installed && !dirty)} onClick={install}>
-        {busy ? t.working : installed ? dirty ? t.applyChanges : t.applied : t.install}
-      </DialogButton>}
-    </Focusable>
-    {page?.integrity_error && !window.location.pathname.endsWith("/maintenance") && <div style={{ ...secondaryStyle, color: "#f0bd73", marginTop: 10 }}>{t.integritySummary}
-      <DialogButton style={{ ...buttonStyle, marginTop: 8 }} disabled={blocked} onClick={() => Router.Navigate(`${route}/maintenance`)}>{t.openMaintenance}</DialogButton>
-    </div>}
-    {error && <Focusable flow-children="row" style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "center" }}>
-      <div role="alert" style={{ ...secondaryStyle, color: "#f0bd73", flex: 1 }}>{error}</div>
-      {page?.found && !installed && !window.location.pathname.endsWith("/install") && <DialogButton style={buttonStyle}
-        disabled={busy || launchBusy} onClick={() => Router.Navigate(`${route}/install`)}>{t.targetDirectory}</DialogButton>}
-      <DialogButton style={buttonStyle} disabled={busy || launchBusy} onClick={() => { void load(); }}>{t.retry}</DialogButton>
-    </Focusable>}
-    {notice && <div role="status" style={{ ...secondaryStyle, color: "#9bd9ae", marginTop: 10 }}>{notice}</div>}
-    {preserved.length > 0 && <div role="status" style={{ ...secondaryStyle, color: "#f0bd73", marginTop: 8 }}>{t.preservedFiles}: {preserved.join(", ")}</div>}
-  </div>;
+  const chooseLocation = () => {
+    if (!page?.found) return;
+    showModal(<LocationModal page={page} onChoose={directory => { void game.load(directory); }} />, window);
+  };
 
-  const content = (children: ReactNode) => <Focusable className="creamdeck-content" flow-children="column" style={{
-    display: "flex", flexDirection: "column", height: `calc(100vh - ${PAGE_TOP_OFFSET + PAGE_BOTTOM_OFFSET + SIDEBAR_CONTENT_TOP_INSET}px)`,
-    boxSizing: "border-box", padding: "24px 32px 16px", minHeight: 0,
-  }}>
-    {header}
-    <Focusable className="creamdeck-scroll" flow-children="column" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 2px 16px" }}>
-      {loading ? <div style={{ padding: 24, textAlign: "center" }}><Spinner style={{ width: 32, height: 32 }} /></div>
-        : !appId ? <div>{t.noAppId}</div>
-        : !page?.found ? <div>{error ? t.loadFailed : t.gameNotInstalled}</div>
-        : children}
-    </Focusable>
+  const discard = () => game.setDraft(previous => ({ ...previous, enabledIds: page?.enabled_dlc_ids ?? [] }));
+
+  // Sidebar facts shared by every tab.
+  const statusLine = (() => {
+    if (unsupported) return { color: C.orange, dot: <Dot color={C.orange} />, text: t.statusUnsupported };
+    if (!page?.found) return null;
+    if (status === "external") return { color: C.orange, dot: <Dot color={C.orange} />, text: t.statusExternal };
+    if (installed && (status === "modified" || status === "legacy"))
+      return { color: C.orange, dot: <Dot color={C.orange} />, text: t.statusNeedsRepair };
+    if (installed) return { color: C.green, dot: <Dot color={C.greenDot} />,
+      text: t.statusInstalled(unlockerLabel(page.selected_unlocker), page.proxy_dll ? t.proxy : t.direct) };
+    return { color: C.secondary, dot: <Dot color={C.muted} hollow />, text: t.statusNotInstalled };
+  })();
+
+  const tabs: { key: Tab; label: string; icon: ReactNode }[] = [
+    { key: "dlc", label: t.tabDlc, icon: Icons.list() },
+    { key: "install", label: t.tabInstall, icon: Icons.sliders() },
+    { key: "maintenance", label: t.tabMaintenance, icon: Icons.wrench() },
+    { key: "about", label: t.tabAbout, icon: Icons.info() },
+  ];
+
+  const nav = <Focusable flow-children="column" style={{ width: 300, flex: "0 0 300px",
+    boxSizing: "border-box", padding: "28px 16px 24px 32px", display: "flex", flexDirection: "column", gap: 6,
+    background: "rgba(0,0,0,.18)" }}>
+    <div style={{ padding: "0 12px 18px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ fontSize: 12, color: C.muted, letterSpacing: ".5px" }}>CreamDeck</div>
+      <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.25, color: C.white, overflowWrap: "anywhere" }}>{name || " "}</div>
+      <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, display: "flex", flexDirection: "column" }}>
+        {typeof details.compatTool === "string" && <span style={{ color: unsupported ? C.orange : C.light }}>
+          {unsupported ? t.noCompatTool : details.compatToolName}</span>}
+        {appId && <span>{t.appId(appId)}</span>}
+      </div>
+      {statusLine && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: statusLine.color }}>
+        {statusLine.dot}{statusLine.text}</div>}
+    </div>
+    {tabs.map(item => {
+      const disabled = unsupported && item.key !== "about";
+      const current = tab === item.key && !disabled;
+      const style = { display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 4, fontSize: 16,
+        color: disabled ? C.disabled : current ? C.white : C.secondary, fontWeight: current ? 500 : 400,
+        background: current ? "rgba(255,255,255,.12)" : "transparent" } as const;
+      if (disabled) return <div key={item.key} aria-disabled="true" style={style}>{item.icon}{item.label}</div>;
+      return <Focusable key={item.key} className="cd-focus cd-tab" style={style}
+        onActivate={() => setTab(item.key)} onFocus={() => setTab(item.key)}>
+        {item.icon}{item.label}
+        {item.key === "about" && update?.latest && <span role="img" aria-label={t.newVersion(update.latest)}
+          style={{ marginLeft: "auto", display: "inline-flex" }}><PulseDot size={9} /></span>}
+      </Focusable>;
+    })}
   </Focusable>;
 
+  let content: ReactNode;
+  if (!appId) content = <Message>{t.noAppId}</Message>;
+  else if (loading && !page) content = <Message><Spinner style={{ width: 32, height: 32 }} /></Message>;
+  else if (unsupported && tab !== "about") content = <UnsupportedTab onRecheck={details.reload} />;
+  else if (!page?.found) content = <Message>{game.error ? <>{t.loadFailed}<br />{game.error}</> : t.gameNotInstalled}</Message>;
+  else if (tab === "dlc") content = <DlcTab game={game} blocked={blocked} onInstall={() => { void install(); }}
+    onDiscard={discard} onChooseLocation={chooseLocation} onTab={setTab} />;
+  else if (tab === "install") content = <InstallTab page={page} draft={draft} setDraft={game.setDraft}
+    disabled={blocked} launch={launch} onChooseLocation={chooseLocation} onTab={setTab} />;
+  else if (tab === "maintenance") content = <MaintenanceTab page={page} preserved={game.preserved} disabled={blocked}
+    onRecheck={() => { void game.recheck(); }} onUninstall={uninstall} />;
+  else content = <AboutTab appId={appId} compatTool={details.compatToolName} />;
+
   return <div className="creamdeck-page" style={{ position: "absolute", inset: 0, paddingTop: PAGE_TOP_OFFSET,
-    paddingBottom: PAGE_BOTTOM_OFFSET, boxSizing: "border-box" }}>
-    <SidebarNavigation title="CreamDeck" showTitle disableRouteReporting pages={[
-      { identifier: "dlc", route: `${route}/dlc`, title: t.dlcManagement, padding: "none", hideTitle: true, icon: <FaListUl />, content: content(
-        <>
-          <Focusable flow-children="row" style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 10 }}>
-            <div role="status" style={{ ...secondaryStyle, flex: 1 }}>{dlcLoading ? t.refreshingDlc : page?.dlc_updated_at ? t.cachedAt(new Date(page.dlc_updated_at * 1000).toLocaleString()) : t.catalogMissing}</div>
-            <DialogButton style={buttonStyle} disabled={dlcLoading || blocked} onClick={() => { void loadDlcs(true); }}>{t.refreshDlc}</DialogButton>
-          </Focusable>
-          {dlcError && <div role="alert" style={{ ...secondaryStyle, color: "#f0bd73", marginBottom: 12 }}>{dlcError}</div>}
-          <DlcPanel dlcs={page?.dlcs ?? []} config={draft} onChange={setDraft} disabled={blocked} />
-        </>) },
-      { identifier: "install", route: `${route}/install`, title: t.installSettings, padding: "none", hideTitle: true, icon: <FaSlidersH />, content: content(
-        <InstallPanel config={draft} onChange={setDraft} unlockers={page?.unlockers ?? []}
-          installed={installed} disabled={blocked} page={page} onTarget={directory => { void load(directory); }}
-          launch={launch} />) },
-      { identifier: "maintenance", route: `${route}/maintenance`, title: t.maintenance, padding: "none", hideTitle: true, icon: <FaWrench />, content: content(
-        <MaintenancePanel page={page} config={draft} disabled={blocked} onUninstall={() => confirm(false)} onCleanup={() => confirm(true)} />) },
-    ]} />
+    paddingBottom: PAGE_BOTTOM_OFFSET, boxSizing: "border-box", background: C.page, color: C.text, display: "flex" }}>
+    <style>{STYLES}</style>
+    <Focusable flow-children="row" style={{ flex: "1 1 auto", minHeight: 0, display: "flex" }}>
+      {nav}
+      {content}
+    </Focusable>
   </div>;
+}
+
+function Message({ children }: { children: ReactNode }) {
+  return <main style={{ flex: "1 1 auto", padding: "28px 40px", fontSize: 14, color: C.secondary, lineHeight: 1.6 }}>{children}</main>;
 }

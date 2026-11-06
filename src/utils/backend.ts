@@ -34,6 +34,17 @@ export interface GamePage {
   resource_version?: string;
   dlc_updated_at?: number;
   dlc_cached?: boolean;
+  has_record?: boolean;
+  files?: FileReport[];
+  external_files?: string[];
+  api_dlls?: string[];
+}
+
+export interface FileReport {
+  name: string;
+  role: "dll" | "backup" | "config" | "proxy" | "record";
+  status: "same" | "modified" | "missing" | "foreign";
+  action: "delete" | "restore" | "keep" | "none" | "blocked";
 }
 
 export interface OperationResult {
@@ -69,3 +80,23 @@ export const uninstallDlcUnlocker = callable<[app_id: string], OperationResult>(
 );
 
 export const forceCleanup = callable<[app_id: string], OperationResult>("force_cleanup");
+
+export interface InstalledGame {
+  app_id: string;
+  name: string | null;
+  unlocker: string;
+  proxy: boolean;
+  dlc_count: number;
+}
+
+export const listInstalledGames = callable<[], OperationResult & { games?: InstalledGame[] }>("list_installed_games");
+export const getActionLog = callable<[limit: number], OperationResult & { lines?: string[] }>("get_action_log");
+export const clearActionLog = callable<[], OperationResult>("clear_action_log");
+
+export interface UpdateInfo {
+  current: string;
+  latest: string | null;
+  os: string;
+}
+
+export const getUpdateInfo = callable<[force: boolean], UpdateInfo>("get_update_info");

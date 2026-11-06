@@ -17,20 +17,27 @@ not GitHub's **Source code.zip**.
 
 Open **CreamDeck** from an installed game's library context menu.
 
-The page has three sections:
+The sidebar shows the game, its Proton version and install status. The page
+has four tabs:
 
-1. **DLC**: search and select DLC, or refresh the catalog.
-2. **Installation**: choose the target folder, unlocker and install method.
+1. **DLC**: search and select DLC, then install or apply the changes from the
+   bar at the bottom (**X** applies, **Y** discards on a controller). On a
+   first install, DLC with separate files start switched off.
+2. **Install**: choose the install location, unlocker and install method.
    The folder must contain `steam_api.dll` or `steam_api64.dll`. If automatic
-   detection misses it, enter its path relative to the game installation.
-3. **Maintenance**: uninstall or clean verified unlocker files. Files changed
-   by a game update or another tool are preserved.
+   detection misses it, choose **Change** and enter its path relative to the
+   game installation. The Proton launch option row shows what Steam has, with
+   this plugin's own item in blue.
+3. **Maintenance**: see how each installed file will be handled, then
+   uninstall. Files changed by a game update or another tool are kept.
+4. **About**: version, update notice, feedback QR code and credits.
 
-New installations default to **CreamAPI + direct replacement**. Select DLC,
-then click **Install**. If you choose proxy mode instead, enable the
-**Proton launch option** switch in Installation.
-Restart the game afterward. Later DLC selections use **Apply changes**; uninstall
-first to change the unlocker or install method.
+Games that don't run with Proton show a single "Not supported" page. The
+quick access panel lists games with an unlocker and opens the shared log.
+
+New installations default to **CreamAPI + direct replacement**. Uninstall
+first to change the unlocker or install method; the DLC selection is kept for
+the next install.
 
 ![CreamDeck game page](docs/screenshot.png)
 
@@ -39,11 +46,12 @@ first to change the unlocker or install method.
 ## Important notes
 
 - Unlockers do **not** download DLC files. Required content must already be
-  installed; enabling missing content can cause crashes. A **⚠** marks DLC
-  with a separate Steam depot.
+  installed; enabling missing content can cause crashes. **Has separate files**
+  marks DLC with its own Steam depot.
 - Proxy mode requires `WINEDLLOVERRIDES="version=n,b" %command%` when using
-  `version.dll`. The Proton launch option switch manages this while preserving
-  other launch options. If DLC stays locked, check the switch and restart the game.
+  `version.dll`. CreamDeck adds it after a proxy install and the Proton launch
+  option switch manages it while preserving other launch options. If DLC stays
+  locked, check the switch and restart the game.
 - Steam's **Verify integrity** restores DLLs replaced by direct installation.
   Reinstall afterward, or use proxy mode.
 - If files need repair, open **Maintenance** before reinstalling. A failed

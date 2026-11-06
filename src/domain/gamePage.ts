@@ -14,12 +14,19 @@ export function proxyChoices(unlocker: string): string[] {
   return ["smokeapi", "creamapi"].includes(unlocker) ? STEAM_PROXIES : [];
 }
 
+// First-time default: everything except DLC that ships its own content files,
+// which may crash the game when it is not downloaded. Unknown counts as normal.
+export function defaultSelection(dlcs: DlcInfo[]): string[] {
+  return dlcs.filter(dlc => dlc.has_depot !== true).map(dlc => dlc.id);
+}
+
 export function configurationForPage(page: GamePage): Configuration {
   if (!page.installed) return {
     unlocker: "creamapi",
     proxy: false,
     proxyDll: "version",
-    enabledIds: page.enabled_dlc_ids ?? [],
+    // An uninstalled game keeps its previous selection instead of new defaults.
+    enabledIds: page.has_record || !page.dlcs?.length ? page.enabled_dlc_ids ?? [] : defaultSelection(page.dlcs),
   };
   const unlocker = page.selected_unlocker ?? "creamapi";
   return {
@@ -57,4 +64,38 @@ export function selectVisible(selected: string[], visible: DlcInfo[], checked: b
   const next = new Set(selected);
   for (const dlc of visible) checked ? next.add(dlc.id) : next.delete(dlc.id);
   return [...next];
+}
+
+export interface SelectionChanges {
+  added: DlcInfo[];
+  removed: DlcInfo[];
+  // Saved or selected IDs that are no longer in the catalog; dropped on apply.
+  delisted: string[];
+}
+
+export function selectionChanges(dlcs: DlcInfo[], saved: string[], draft: string[]): SelectionChanges {
+  const before = new Set(saved), after = new Set(draft);
+  const known = new Set(dlcs.map(dlc => dlc.id));
+  return {
+    added: dlcs.filter(dlc => after.has(dlc.id) && !before.has(dlc.id)),
+    removed: dlcs.filter(dlc => before.has(dlc.id) && !after.has(dlc.id)),
+    delisted: [...after].filter(id => !known.has(id)),
+  };
+}
+
+// The selection sent to the backend: only IDs the current catalog still lists.
+export function applicableIds(dlcs: DlcInfo[], draft: string[]): string[] {
+  const known = new Set(dlcs.map(dlc => dlc.id));
+  return draft.filter(id => known.has(id));
+}
+
+// Where the "All DLC" switch sits: every, none, or some of the visible rows.
+export function selectionLevel(visible: DlcInfo[], selected: string[]): "all" | "none" | "some" {
+  const ids = new Set(selected);
+  const count = visible.filter(dlc => ids.has(dlc.id)).length;
+  return count === 0 ? "none" : count === visible.length ? "all" : "some";
+}
+
+export function sortDlcs(dlcs: DlcInfo[]): DlcInfo[] {
+  return filterDlcs(dlcs, "", false, []);
 }
