@@ -1,6 +1,8 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
-import { GamePage, getGamePage, getDlcPage, OperationResult } from "../utils/backend";
-import { Configuration, configurationForPage } from "../domain/gamePage";
+import { GamePage, getGamePage, getDlcPage, logFrontend, OperationResult } from "../utils/backend";
+import { Configuration, configurationForPage, defaultSelection } from "../domain/gamePage";
+
+export type ActionOutcome = { ok: true; result: OperationResult } | { ok: false; error: string; refreshFailed?: boolean };
 
 export function useGamePage(appId: string | null, message: (code?: string) => string) {
   const [page, setPage] = useState<GamePage>();
@@ -8,17 +10,20 @@ export function useGamePage(appId: string | null, message: (code?: string) => st
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [dlcLoading, setDlcLoading] = useState(false);
   const [dlcError, setDlcError] = useState("");
+  // Files the last uninstall kept; they stay listed on the maintenance tab.
   const [preserved, setPreserved] = useState<string[]>([]);
   const generation = useRef(0);
   const lock = useRef(false);
   const dlcLock = useRef(false);
   const target = useRef<string | undefined>(undefined);
+  const current = useRef<GamePage | undefined>(undefined);
   const translate = useRef(message);
   translate.current = message;
+
+  const publish = (value: GamePage | undefined) => { current.current = value; setPage(value); };
 
   async function bounded<T>(request: Promise<T>, milliseconds: number): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -35,22 +40,47 @@ export function useGamePage(appId: string | null, message: (code?: string) => st
     if (token !== generation.current) return;
     if (value.error_code) throw new Error(translate.current(value.error_code));
     target.current = value.target_directory;
-    setPage(value);
+    publish(value);
     setDraft(configurationForPage(value));
     setNeedsRefresh(false);
   }, [appId]);
 
-  const load = useCallback(async (directory?: string) => {
-    if (lock.current) return;
+  // Resolves to the error text, or "" when the page loaded (or the load was skipped).
+  const load = useCallback(async (directory?: string): Promise<string> => {
+    if (lock.current) return "";
     const token = generation.current;
     lock.current = true;
     setLoading(true); setError("");
-    try { await refresh(token, directory ?? target.current); }
-    catch (e) { if (token === generation.current) setError(e instanceof Error ? e.message : translate.current()); }
+    try { await refresh(token, directory ?? target.current); return ""; }
+    catch (e) {
+      const text = e instanceof Error ? e.message : translate.current();
+      logFrontend("error", `Load game page ${appId}`, text);
+      if (token === generation.current) setError(text);
+      return text;
+    }
     finally {
       if (token === generation.current) { lock.current = false; setLoading(false); }
     }
   }, [refresh]);
+
+  // Re-check files without the full-page spinner, keeping unapplied DLC edits.
+  const recheck = useCallback(async () => {
+    if (lock.current || !appId) return;
+    const token = generation.current;
+    lock.current = true;
+    try {
+      const value = await bounded(getGamePage(appId, target.current), 15000);
+      if (token !== generation.current) return;
+      if (value.error_code) throw new Error(translate.current(value.error_code));
+      publish({ ...value, dlcs: value.dlcs?.length ? value.dlcs : current.current?.dlcs });
+      setError("");
+    }
+    catch (e) {
+      logFrontend("error", `Recheck game page ${appId}`, e);
+      if (token === generation.current) setError(e instanceof Error ? e.message : translate.current());
+    }
+    finally { if (token === generation.current) lock.current = false; }
+  }, [appId]);
 
   const loadDlcs = useCallback(async (force = false) => {
     if (!appId || dlcLock.current) return;
@@ -59,46 +89,57 @@ export function useGamePage(appId: string | null, message: (code?: string) => st
     try {
       const result = await bounded(getDlcPage(appId, force), 35000);
       if (token !== generation.current) return;
-      if (result.dlcs) setPage(previous => previous && ({ ...previous, dlcs: result.dlcs,
-        dlc_updated_at: result.updated_at, dlc_cached: true }));
+      const dlcs = result.dlcs;
+      const previous = current.current;
+      if (dlcs && previous) {
+        publish({ ...previous, dlcs, dlc_updated_at: result.updated_at, dlc_cached: true });
+        // The first catalog for a never-installed game brings the default selection.
+        if (!previous.installed && !previous.has_record && !previous.dlcs?.length) {
+          setDraft(value => ({ ...value, enabledIds: defaultSelection(dlcs) }));
+        }
+      }
       if (!result.success) setDlcError(translate.current(result.error_code));
-    } catch { if (token === generation.current) setDlcError(translate.current("catalog_unavailable")); }
+    } catch (e) {
+      logFrontend("warning", `Load DLC catalog ${appId}`, e);
+      if (token === generation.current) setDlcError(translate.current("catalog_unavailable"));
+    }
     finally { if (token === generation.current) { dlcLock.current = false; setDlcLoading(false); } }
   }, [appId]);
 
   useEffect(() => {
     generation.current++;
     lock.current = false; dlcLock.current = false; target.current = undefined;
-    setPage(undefined); setNotice(""); setPreserved([]); setNeedsRefresh(false);
+    publish(undefined); setPreserved([]); setNeedsRefresh(false);
     const token = generation.current;
     // Publish local state first; the catalog never blocks maintenance.
     void load().then(() => { if (token === generation.current) void loadDlcs(); });
     return () => { generation.current++; };
   }, [load, loadDlcs]);
 
-  const action = async (run: () => Promise<OperationResult>, success: string, refreshError: string) => {
-    if (lock.current) return;
+  const action = async (run: () => Promise<OperationResult>): Promise<ActionOutcome | undefined> => {
+    if (lock.current) return undefined;
     const token = generation.current;
-    lock.current = true; setBusy(true); setError(""); setNotice(""); setPreserved([]);
-    let succeeded = false;
+    lock.current = true; setBusy(true); setError("");
+    let result: OperationResult | undefined;
     try {
-      const result = await run();
+      result = await run();
       if (!result.success) throw new Error(result.error_code ? translate.current(result.error_code) : result.error || translate.current());
-      succeeded = true;
-      if (token !== generation.current) return;
+      if (token !== generation.current) return undefined;
       setPreserved(result.preserved_files ?? []);
       await refresh(token, target.current);
-      if (token === generation.current) setNotice(success);
+      return { ok: true, result };
     } catch (e) {
-      if (token === generation.current) {
-        setError(succeeded ? refreshError : e instanceof Error ? e.message : translate.current());
-        if (succeeded) setNeedsRefresh(true);
-      }
+      const text = e instanceof Error ? e.message : translate.current();
+      // A failed result is already in the log as the user action's own line.
+      if (!result || result.success) logFrontend("error", result ? `Refresh after action on ${appId}` : `Action on ${appId}`, text);
+      if (token !== generation.current) return undefined;
+      if (result?.success) { setNeedsRefresh(true); return { ok: false, error: text, refreshFailed: true }; }
+      return { ok: false, error: text };
     } finally {
       if (token === generation.current) { lock.current = false; setBusy(false); }
     }
   };
 
-  return { page, draft, setDraft, loading, busy, error, notice, needsRefresh, preserved,
-    dlcLoading, dlcError, loadDlcs, load, action };
+  return { page, draft, setDraft, loading, busy, error, needsRefresh, preserved,
+    dlcLoading, dlcError, loadDlcs, load, recheck, action };
 }

@@ -125,8 +125,79 @@ class ReliabilityTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["dlcs"], cached["dlcs"])
             self.assertEqual(steamcmd.cached_page("10"), cached)
 
+    async def test_scan_finds_unreal_engine_steamworks_directory(self):
+        nested = self.game.joinpath("Engine", "Binaries", "ThirdParty", "Steamworks", "Steamv157", "Win64")
+        nested.mkdir(parents=True)
+        (nested / "steam_api64.dll").write_bytes(b"original")
+        game = {"game_directory": str(self.game), "name": "Game", "branch": "public", "build_id": 1}
+        with patch("main.steam_library.find_game", return_value=game):
+            page = await main.Plugin().get_game_page("10")
+        self.assertTrue(page["found"])
+        self.assertEqual(page["target_directory"], os.path.relpath(nested, self.game))
+
+    def test_known_locations_come_first_and_skip_the_scan(self):
+        engine = self.game.joinpath("Engine", "Binaries", "ThirdParty", "Steamworks")
+        for version in ("Steamv153", "Steamv157"):
+            engine.joinpath(version, "Win64").mkdir(parents=True)
+            (engine / version / "Win64" / "steam_api64.dll").write_bytes(b"original")
+        exe = self.game.joinpath("Project", "Binaries", "Win64")
+        exe.mkdir(parents=True)
+        (exe / "steam_api64.dll").write_bytes(b"original")
+        unknown = self.game.joinpath("Other", "Tools")
+        unknown.mkdir(parents=True)
+        (unknown / "steam_api64.dll").write_bytes(b"original")
+        paths = [option["path"] for option in manager.candidates(str(self.game)) if option["detected"]]
+        self.assertEqual(paths, [os.path.relpath(engine / "Steamv157" / "Win64", self.game),
+                                 os.path.relpath(engine / "Steamv153" / "Win64", self.game),
+                                 os.path.relpath(exe, self.game)])
+
+    def test_unity_plugins_folder_is_a_known_location(self):
+        plugins = self.game.joinpath("Game_Data", "Plugins", "x86_64")
+        plugins.mkdir(parents=True)
+        (plugins / "steam_api64.dll").write_bytes(b"original")
+        paths = [option["path"] for option in manager.candidates(str(self.game)) if option["detected"]]
+        self.assertEqual(paths, [os.path.relpath(plugins, self.game)])
+
+    def test_fallback_scan_is_breadth_first_skips_assets_and_honors_budgets(self):
+        shallow = self.game.joinpath("z", "bin")
+        shallow.mkdir(parents=True)
+        (shallow / "steam_api.dll").write_bytes(b"original")
+        assets = self.game.joinpath("Content", "x")
+        assets.mkdir(parents=True)
+        (assets / "steam_api64.dll").write_bytes(b"original")
+        deep = self.game.joinpath("a", "b", "c", "d")
+        deep.mkdir(parents=True)
+        (deep / "steam_api64.dll").write_bytes(b"original")
+        paths = [option["path"] for option in manager.candidates(str(self.game)) if option["detected"]]
+        self.assertEqual(paths, [os.path.relpath(shallow, self.game), os.path.relpath(deep, self.game)])
+        with patch.object(manager, "SCAN_SECONDS", 0):
+            self.assertFalse(any(option["detected"] for option in manager.candidates(str(self.game))))
+        with patch.object(manager, "SCAN_DIRECTORIES", 4):
+            paths = [option["path"] for option in manager.candidates(str(self.game)) if option["detected"]]
+        self.assertEqual(paths, [])
+
+    async def test_manual_target_accepts_copied_paths(self):
+        nested = self.game.joinpath("Engine", "Binaries", "Win64")
+        nested.mkdir(parents=True)
+        (nested / "steam_api64.dll").write_bytes(b"original")
+        expected = os.path.relpath(nested, self.game)
+        name = self.game.resolve().name
+        for supplied in (f"{name}/Engine/Binaries/Win64/steam_api64.dll", "Engine\\Binaries\\Win64\\",
+                         " Engine/Binaries/Win64/steam_api64.dll ", str(nested), "./Engine/Binaries/Win64"):
+            self.assertEqual(manager.relative_target(str(self.game), supplied), expected, supplied)
+        (self.game / "steam_api64.dll").write_bytes(b"original")
+        self.assertEqual(manager.relative_target(str(self.game), "steam_api64.dll"), ".")
+        self.assertEqual(manager.relative_target(str(self.game), "."), ".")
+        with self.assertRaises(manager.OperationError):
+            manager.relative_target(str(self.game), str(self.root / "elsewhere"))
+        game = {"game_directory": str(self.game), "name": "Game", "branch": "public", "build_id": 1}
+        with patch("main.steam_library.find_game", return_value=game):
+            page = await main.Plugin().get_game_page("10", f"{name}/Engine/Binaries/Win64/steam_api64.dll")
+        self.assertTrue(page["found"])
+        self.assertEqual(page["target_directory"], expected)
+
     async def test_manual_target_outside_scan_limits_remains_selectable(self):
-        nested = self.game.joinpath("a", "b", "c", "d", "e")
+        nested = self.game.joinpath("a", "b", "c", "d", "e", "f", "g", "h", "i")
         nested.mkdir(parents=True)
         (nested / "steam_api64.dll").write_bytes(b"original")
         game = {"game_directory": str(self.game), "name": "Game", "branch": "public", "build_id": 1}

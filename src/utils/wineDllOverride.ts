@@ -85,14 +85,19 @@ export function editWineDllOverride(current: string, proxyDll: string, enabled: 
   }
   if (enabled) entries.push(`${proxyDll}=n,b`);
   const value = entries.join(";");
-  const replacement = `WINEDLLOVERRIDES="${value.replace(/[\\"$`]/g, "\\$&")}"`;
+  // Single quotes keep the value literal; a value that itself holds one needs double quotes.
+  const replacement = value.includes("'")
+    ? `WINEDLLOVERRIDES="${value.replace(/[\\"$`]/g, "\\$&")}"`
+    : `WINEDLLOVERRIDES='${value}'`;
   if (!assignment) return `${replacement} ${current.trim() ? current : "%command%"}`;
   let { start, end } = assignment.span;
   if (!value && assignments.length === 1) {
     // Remove adjacent separator whitespace, preserving every other source span.
     if (/^[\t ]/.test(current.slice(end))) while (/[\t ]/.test(current[end] ?? "\n")) end++;
     else while (start > 0 && /[\t ]/.test(current[start - 1])) start--;
-    return current.slice(0, start) + current.slice(end);
+    const rest = current.slice(0, start) + current.slice(end);
+    // A bare %command% is what Steam runs anyway, so leave the options empty as before.
+    return rest.trim() === "%command%" ? "" : rest;
   }
   // Keep an empty final assignment when deleting it would resurrect an earlier one.
   return current.slice(0, start) + replacement + current.slice(end);

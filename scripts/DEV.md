@@ -32,7 +32,8 @@ runtime entries, and links them to `/tmp/creamdeck-dev-<uid>/current`. This keep
 the development mirror off the VM's system partition. The session enables
 `LIVE_RELOAD` through its own systemd override and restarts Decky.
 
-Edits are debounced for one second, rebuilt, and synchronized automatically.
+Frontend edits are debounced for three seconds and backend, metadata, or
+resource edits for five seconds, then rebuilt and synchronized automatically.
 Deleted runtime files are removed from the mirror; unchanged files keep their
 timestamps. Frontend changes request Decky's native plugin reload by touching
 the installed `main.py` symlink, since its recursive watcher does not follow

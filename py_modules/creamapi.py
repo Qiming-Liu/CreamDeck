@@ -11,7 +11,6 @@ import os
 import shutil
 from typing import Iterable, Optional
 
-import decky
 from bitness import is_64_bit
 from resource_files import resource_path
 
@@ -84,7 +83,6 @@ async def install(directory: str, app_id: str, enabled_dlcs: list[tuple[str, str
         _write_config(directory, app_id, enabled_dlcs)
 
     await asyncio.get_event_loop().run_in_executor(None, _install)
-    decky.logger.info(f"[CreamAPI] Installed to {directory} ({len(enabled_dlcs)} DLC enabled)")
 
 
 async def uninstall(directory: str) -> None:
@@ -103,7 +101,6 @@ async def uninstall(directory: str) -> None:
             os.remove(_config_path(directory))
 
     await asyncio.get_event_loop().run_in_executor(None, _uninstall)
-    decky.logger.info(f"[CreamAPI] Uninstalled from {directory}")
 
 
 async def proxy_install(
@@ -134,7 +131,6 @@ async def proxy_install(
         _write_config(directory, app_id, enabled_dlcs)
 
     await asyncio.get_event_loop().run_in_executor(None, _install)
-    decky.logger.info(f"[CreamAPI] Proxy-installed ({proxy_dll}.dll) to {directory} ({len(enabled_dlcs)} DLC enabled)")
 
 
 async def proxy_uninstall(directory: str) -> None:
@@ -153,7 +149,6 @@ async def proxy_uninstall(directory: str) -> None:
             os.remove(_config_path(directory))
 
     await asyncio.get_event_loop().run_in_executor(None, _uninstall)
-    decky.logger.info(f"[CreamAPI] Proxy-uninstalled from {directory}")
 
 
 def get_active_proxy_dll(directory: str) -> Optional[str]:

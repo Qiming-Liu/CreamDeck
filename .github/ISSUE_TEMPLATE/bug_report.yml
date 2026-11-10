@@ -79,9 +79,9 @@ body:
 
   - type: textarea
     attributes:
-      label: CreamDeck plugin log
-      description: "In Decky Loader's settings, find CreamDeck and view its logs (or check ~/homebrew/logs/CreamDeck/ over SSH/desktop mode). Please attach the full log, not just the last few lines."
-      placeholder: CreamDeck.log
+      label: CreamDeck log file
+      description: "Open CreamDeck from the Quick Access menu, go to Logs and press Export. The file is saved to ~/Downloads as creamdeck-log-<date>-<time>.log; drag it into this box to attach it. Home folders and keys are already masked in it."
+      placeholder: Drag creamdeck-log-YYYYmmdd-HHMMSS.log here
     validations:
       required: true
 

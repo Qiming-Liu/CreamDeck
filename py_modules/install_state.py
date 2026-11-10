@@ -80,6 +80,11 @@ def get_state(app_id: str) -> Optional[InstallState]:
         return _load().get(app_id)
 
 
+def all_states() -> dict[str, InstallState]:
+    with _lock:
+        return _load()
+
+
 def restore(app_id: str, state: Optional[InstallState]) -> None:
     with _lock:
         data = _load()

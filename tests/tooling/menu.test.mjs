@@ -5,7 +5,7 @@ import vm from "node:vm";
 import ts from "typescript";
 
 // Exercise the actual patched render/update callbacks without Steam or Decky.
-function menuHarness() {
+function menuHarness(appid = 123, window = {}) {
   let items = [];
   let navigated;
   class Inner {
@@ -13,7 +13,7 @@ function menuHarness() {
     shouldComponentUpdate() { return true; }
   }
   const component = {
-    _owner: { pendingProps: { overview: { appid: 123 } } },
+    _owner: { pendingProps: { overview: { appid } } },
     props: { children: items }, type: () => ({ type: Inner }),
   };
   class Library { render() { return component; } }
@@ -42,7 +42,7 @@ function menuHarness() {
   });
   const module = { exports: {} };
   vm.runInNewContext(outputText, {
-    module, exports: module.exports,
+    module, exports: module.exports, window,
     require(name) {
       if (name === "@decky/ui") return ui;
       if (name === "react/jsx-runtime") return { jsx: (type, props, key) => ({ type, props, key }) };
@@ -171,3 +171,14 @@ for (const path of ["render", "refresh", "outer"]) {
     } finally { h.cleanup(); }
   });
 }
+
+test("non-Steam shortcuts get no entry", () => {
+  const shortcutType = { appStore: { GetAppOverviewByAppID: () => ({ app_type: 0x40000000 }) } };
+  for (const h of [menuHarness(3000000000), menuHarness(456, shortcutType)]) {
+    try {
+      const items = [launch(), properties()];
+      h.render(items);
+      assert.equal(items.filter(isPlugin).length, 0);
+    } finally { h.cleanup(); }
+  }
+});

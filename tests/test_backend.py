@@ -440,36 +440,31 @@ class GetGamePageIntegrityTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(page["integrity_error"])
 
 
-class ActionLogTest(unittest.IsolatedAsyncioTestCase):
-    async def test_log_call_writes_version_and_call_and_result(self):
-        import action_log
+class UserActionLogTest(unittest.IsolatedAsyncioTestCase):
+    """The log records what the user did and how it ended, not which RPCs ran."""
+
+    async def test_user_action_writes_one_done_line(self):
         import decky
+        import main
 
-        class Dummy:
-            @action_log.log_call
-            async def do_thing(self, x):
-                return {"ok": True, "x": x}
+        with patch("main.steam_library.find_game", return_value={"name": "Alpha"}),                 patch.object(main.Plugin, "_remove", AsyncMock(return_value={"success": True})),                 self.assertLogs(decky.logger, "INFO") as logs:
+            await main.Plugin().force_cleanup("632360")
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("[user] Force cleanup of unlocker files for app 632360 (Alpha): done", logs.output[0])
+        self.assertNotIn("called", logs.output[0])
+        self.assertNotIn("returned", logs.output[0])
 
-        result = await Dummy().do_thing(5)
-        self.assertEqual(result, {"ok": True, "x": 5})
+    async def test_failed_result_is_logged_with_its_reason(self):
+        import decky
+        import main
 
-        log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "creamdeck_actions.log")
-        with open(log_path, "r", encoding="utf-8") as f:
-            contents = f.read()
-        self.assertIn(f"CreamDeck v{decky.DECKY_PLUGIN_VERSION} starting", contents)
-        self.assertIn("do_thing called", contents)
-        self.assertIn("do_thing returned", contents)
-
-    async def test_log_call_logs_exceptions_and_reraises(self):
-        import action_log
-
-        class Dummy:
-            @action_log.log_call
-            async def boom(self):
-                raise ValueError("nope")
-
-        with self.assertRaises(ValueError):
-            await Dummy().boom()
+        with patch("main.steam_library.find_game", return_value=None),                 patch("main.install_state.get_state", return_value=None),                 self.assertLogs(decky.logger, "INFO") as logs:
+            result = await main.Plugin().install_dlc_unlocker("632360", "smokeapi", ["1", "2"], True, "winmm")
+        self.assertEqual(result["error_code"], "game_not_found")
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("WARNING", logs.output[0])
+        self.assertIn("[user] Install SmokeAPI (proxy winmm.dll, 2 DLC enabled) for app 632360: "
+                      "failed: game_not_found", logs.output[0])
 
 
 class InstallStateTest(unittest.TestCase):

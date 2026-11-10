@@ -342,10 +342,11 @@ async def get_page(app_id: str, branch: str, build_id: int, force: bool = False)
             write_json(os.path.join(_appinfo_cache_dir(), f"{app_id}.page.json"), page)
             stale = info.get("stale", False)
             return {"success": not stale, **page, "cached": stale,
-                    **({"error_code": "catalog_unavailable"} if stale else {})}
+                    **({"error_code": "catalog_unavailable", "error": "Steam returned only stale data"} if stale else {})}
         except Exception as error:
             decky.logger.warning(f"DLC refresh failed for {app_id}: {error}")
-            return {"success": False, **cached_page(app_id), "cached": bool(cached_page(app_id)), "error_code": "catalog_unavailable"}
+            return {"success": False, **cached_page(app_id), "cached": bool(cached_page(app_id)), "error_code": "catalog_unavailable",
+                    "error": str(error)}
 
     # Reopening a page must not start another identical network fallback chain.
     task = _queries.get(app_id)

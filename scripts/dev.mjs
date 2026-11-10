@@ -76,19 +76,42 @@ function executable(name) {
   return git || name;
 }
 
-function fingerprint() {
-  const hash = createHash("sha256");
-  function visit(target) {
-    if (!fs.existsSync(target)) return;
-    const stat = fs.lstatSync(target);
-    if (stat.isSymbolicLink()) return;
-    if (stat.isDirectory()) {
-      if (path.basename(target) === "__pycache__") return;
-      for (const name of fs.readdirSync(target).sort()) visit(path.join(target, name));
-    } else hash.update(`${path.relative(repo, target)}:${stat.size}:${stat.mtimeMs}\n`);
+// Frontend edits settle after three seconds; backend, metadata and resource edits
+// after five, since those uploads restart the Decky service.
+export const SETTLE_MS = { frontend: 3000, backend: 5000 };
+const WATCHED = {
+  frontend: ["src", "rollup.config.js"],
+  backend: ["main.py", "py_modules", "package.json", "resources", "plugin.json", "scripts/dev-session.sh"],
+};
+
+export function fingerprint(directory = repo) {
+  function digest(names) {
+    const hash = createHash("sha256");
+    function visit(target) {
+      if (!fs.existsSync(target)) return;
+      const stat = fs.lstatSync(target);
+      if (stat.isSymbolicLink()) return;
+      if (stat.isDirectory()) {
+        if (path.basename(target) === "__pycache__") return;
+        for (const name of fs.readdirSync(target).sort()) visit(path.join(target, name));
+      } else hash.update(`${path.relative(directory, target)}:${stat.size}:${stat.mtimeMs}\n`);
+    }
+    for (const name of names) visit(path.join(directory, name));
+    return hash.digest("hex");
   }
-  for (const name of ["src", "main.py", "py_modules", "package.json", "rollup.config.js", "resources", "plugin.json", "scripts/dev-session.sh"]) visit(path.join(repo, name));
-  return hash.digest("hex");
+  return { frontend: digest(WATCHED.frontend), backend: digest(WATCHED.backend) };
+}
+
+// Synchronize once every changed group has been quiet for its own settle time, so
+// a backend edit made alongside frontend edits is never uploaded early.
+export function shouldSynchronize(settled, current, changedAt, now) {
+  let changed = false;
+  for (const group of Object.keys(SETTLE_MS)) {
+    if (current[group] === settled[group]) continue;
+    if (now - changedAt[group] < SETTLE_MS[group]) return false;
+    changed = true;
+  }
+  return changed;
 }
 
 // Only runtime files are synchronized. Connection settings and keys stay on the host.
@@ -220,14 +243,17 @@ async function main() {
     const ended = new Promise((resolve, reject) => { session.once("error", reject); session.once("exit", resolve); });
     let settled = fingerprint();
     let pending = settled;
-    let changedAt = 0;
+    const changedAt = { frontend: 0, backend: 0 };
     timer = setInterval(async () => {
       if (busy || stopping) return;
       busy = true;
       try {
         const current = fingerprint();
-        if (current !== pending) { pending = current; changedAt = Date.now(); }
-        if (current !== settled && Date.now() - changedAt >= 1000) {
+        for (const group of Object.keys(changedAt)) {
+          if (current[group] !== pending[group]) changedAt[group] = Date.now();
+        }
+        pending = current;
+        if (shouldSynchronize(settled, current, changedAt, Date.now())) {
           await synchronize();
           settled = current;
         }

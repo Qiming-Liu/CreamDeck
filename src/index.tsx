@@ -1,36 +1,56 @@
 import { routerHook } from "@decky/api";
-import { definePlugin, staticClasses } from "@decky/ui";
-import { FaUnlock as PluginIcon } from "react-icons/fa";
+import { definePlugin, useParams } from "@decky/ui";
+import type { ComponentType } from "react";
 
 import contextMenuPatch, { LibraryContextMenu } from "./patch";
-import { useTranslations } from "./utils/i18n";
 import CreamDeckPage from "./views/CreamDeckPage";
+import LogsPage from "./views/LogsPage";
+import { refreshUpdate } from "./hooks/useUpdateInfo";
+import { logFrontend } from "./utils/backend";
+import QuickAccessPanel, { LOGS_ROUTE, PanelTitle, PluginIcon } from "./views/QuickAccessPanel";
 
 const ROUTE = "/creamdeck/:appid";
 
-function QuickAccessContent() {
-  const t = useTranslations();
-  return <div style={{ padding: "1em" }}>{t.quickAccessContent}</div>;
+function GameRoute() {
+  // The route params subscribe to navigation, so going from one game's page straight to
+  // another's re-renders here; the key then remounts the page with fresh state.
+  const params = useParams<{ appid?: string }>();
+  const appId = params?.appid ?? window.location.pathname.match(/\/creamdeck\/(\d+)/)?.[1];
+  return <CreamDeckPage key={appId} appId={appId ?? null} />;
 }
 
-function GameRoute() {
-  // Keep edits across sidebar routes, but never carry them into another game.
-  const appId = window.location.pathname.match(/\/creamdeck\/(\d+)/)?.[1];
-  return <CreamDeckPage key={appId} />;
+function patchContextMenu() {
+  try {
+    return contextMenuPatch(LibraryContextMenu);
+  } catch (error) {
+    logFrontend("error", "Patch the game context menu", error);
+    return undefined;
+  }
+}
+
+function addRoute(path: string, component: ComponentType, exact: boolean) {
+  try {
+    routerHook.addRoute(path, component, { exact });
+  } catch (error) {
+    logFrontend("error", `Add route ${path}`, error);
+  }
 }
 
 export default definePlugin(() => {
-  const menuPatch = contextMenuPatch(LibraryContextMenu);
+  const menuPatch = patchContextMenu();
+  void refreshUpdate();
 
-  routerHook.addRoute(ROUTE, GameRoute, { exact: false });
+  addRoute(ROUTE, GameRoute, false);
+  addRoute(LOGS_ROUTE, LogsPage, true);
 
   return {
     name: "CreamDeck",
-    title: <div className={staticClasses.Title}>CreamDeck</div>,
-    content: <QuickAccessContent />,
+    titleView: <PanelTitle />,
+    content: <QuickAccessPanel />,
     icon: <PluginIcon />,
     onDismount() {
       routerHook.removeRoute(ROUTE);
+      routerHook.removeRoute(LOGS_ROUTE);
       menuPatch?.unpatch();
     },
   };

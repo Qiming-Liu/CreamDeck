@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { once } from "node:events";
 import { PassThrough } from "node:stream";
-import { copyRuntime, loadDevEnv, createProcessGroup, forwardSessionInput } from "../../scripts/dev.mjs";
+import { copyRuntime, loadDevEnv, createProcessGroup, forwardSessionInput, fingerprint, shouldSynchronize } from "../../scripts/dev.mjs";
 
 test("shutdown terminates background children while allowing the session to clean up", { timeout: 5000 }, async () => {
   const group = createProcessGroup();
@@ -89,6 +89,42 @@ test("process connection settings override the local ignored configuration", () 
     assert.deepEqual(loadDevEnv(root, { DECKY_HOST: "test@host" }), { DECKY_HOST: "test@host" });
     fs.writeFileSync(path.join(root, ".env"), 'DECKY_HOST="local@host"\nDECKY_PORT=2222\n');
     assert.deepEqual(loadDevEnv(root, { DECKY_HOST: "override@host" }), { DECKY_HOST: "override@host", DECKY_PORT: "2222" });
+  } finally {
+    assert.equal(path.dirname(fs.realpathSync(root)), fs.realpathSync(os.tmpdir()));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("frontend edits settle after three seconds and backend edits after five", () => {
+  const settled = { frontend: "a", backend: "a" };
+  const frontend = { frontend: "b", backend: "a" };
+  const backend = { frontend: "a", backend: "b" };
+  const both = { frontend: "b", backend: "b" };
+  const quiet = { frontend: 0, backend: 0 };
+  assert.equal(shouldSynchronize(settled, settled, quiet, 10000), false);
+  assert.equal(shouldSynchronize(settled, frontend, quiet, 2999), false);
+  assert.equal(shouldSynchronize(settled, frontend, quiet, 3000), true);
+  assert.equal(shouldSynchronize(settled, backend, quiet, 4999), false);
+  assert.equal(shouldSynchronize(settled, backend, quiet, 5000), true);
+  // A backend edit still settling holds back an already settled frontend edit.
+  assert.equal(shouldSynchronize(settled, both, { frontend: 0, backend: 2000 }, 4000), false);
+  assert.equal(shouldSynchronize(settled, both, { frontend: 0, backend: 2000 }, 7000), true);
+});
+
+test("source edits change the frontend fingerprint and Python edits the backend one", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "creamdeck-fingerprint-"));
+  try {
+    fs.mkdirSync(path.join(root, "src"));
+    fs.mkdirSync(path.join(root, "py_modules"));
+    const initial = fingerprint(root);
+    fs.writeFileSync(path.join(root, "src/index.tsx"), "export {};");
+    const frontend = fingerprint(root);
+    assert.notEqual(frontend.frontend, initial.frontend);
+    assert.equal(frontend.backend, initial.backend);
+    fs.writeFileSync(path.join(root, "py_modules/backend.py"), "pass");
+    const backend = fingerprint(root);
+    assert.equal(backend.frontend, frontend.frontend);
+    assert.notEqual(backend.backend, frontend.backend);
   } finally {
     assert.equal(path.dirname(fs.realpathSync(root)), fs.realpathSync(os.tmpdir()));
     fs.rmSync(root, { recursive: true, force: true });

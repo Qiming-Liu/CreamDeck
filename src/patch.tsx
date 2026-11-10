@@ -31,10 +31,26 @@ const asMenuItems = (items: any): any[] | undefined => {
   );
 };
 
+// Non-Steam shortcuts have no Steam DLC to unlock. Steam gives them App IDs in the
+// upper half of the 32-bit range and the k_EAppType_Shortcut app type.
+const SHORTCUT_APP_TYPE = 0x40000000;
+export const isNonSteamShortcut = (appid: number) => {
+  if (appid >= 0x80000000) return true;
+  try {
+    return (window as any).appStore?.GetAppOverviewByAppID?.(appid)?.app_type === SHORTCUT_APP_TYPE;
+  } catch {
+    return false;
+  }
+};
+
 // Always add before "Properties..."
 const spliceMenuItem = (children: any, appid: number) => {
   const menuItems = asMenuItems(children);
   if (!menuItems) return;
+  if (isNonSteamShortcut(appid)) {
+    handleItemDupes(menuItems);
+    return;
+  }
   // Search recursively to support Steam's grouped/wrapped items.
   // Shared menu components also render submenus, which have no Properties item.
   const propertiesMenuItemIdx = menuItems.findIndex((item) => containsMenuItem(item, APP_PROPERTIES_ITEM));

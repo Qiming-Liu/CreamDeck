@@ -35,7 +35,7 @@ test("a missing Steam callback times out and releases the busy action", async t 
 });
 
 test("proxy launch options preserve other overrides and existing arguments", () => {
-  assert.equal(mergeWineDllOverride('WINEDLLOVERRIDES="dxgi=n,b" gamemoderun %command% -flag', "version"), 'WINEDLLOVERRIDES="dxgi=n,b;version=n,b" gamemoderun %command% -flag');
+  assert.equal(mergeWineDllOverride('WINEDLLOVERRIDES="dxgi=n,b" gamemoderun %command% -flag', "version"), "WINEDLLOVERRIDES='dxgi=n,b;version=n,b' gamemoderun %command% -flag");
 });
 
 test("the switch reads quoted, unquoted, grouped and repeated overrides", () => {
@@ -47,19 +47,26 @@ test("the switch reads quoted, unquoted, grouped and repeated overrides", () => 
 });
 
 test("turning off the selected DLL preserves grouped names, other overrides and arguments", () => {
-  assert.equal(editWineDllOverride('FOO=1 WINEDLLOVERRIDES="version,dxgi=n,b;winmm=b" gamemoderun %command% --path "my files"', "version", false), 'FOO=1 WINEDLLOVERRIDES="dxgi=n,b;winmm=b" gamemoderun %command% --path "my files"');
+  assert.equal(editWineDllOverride('FOO=1 WINEDLLOVERRIDES="version,dxgi=n,b;winmm=b" gamemoderun %command% --path "my files"', "version", false), `FOO=1 WINEDLLOVERRIDES='dxgi=n,b;winmm=b' gamemoderun %command% --path "my files"`);
   assert.equal(editWineDllOverride('WINEDLLOVERRIDES="version=n,b" %command% -novid', "version", false), '%command% -novid');
+});
+
+test("removing the last override drops WINEDLLOVERRIDES and a bare %command%", () => {
+  assert.equal(editWineDllOverride('WINEDLLOVERRIDES="version=n,b" %command%', "version", false), '');
+  assert.equal(editWineDllOverride("FOO=1 WINEDLLOVERRIDES='version=n,b' %command%", "version", false), 'FOO=1 %command%');
+  assert.equal(editWineDllOverride("WINEDLLOVERRIDES='version=n,b' %command%", "version", true), "WINEDLLOVERRIDES='version=n,b' %command%");
+  assert.equal(editWineDllOverride(`WINEDLLOVERRIDES="it's=b" %command%`, "version", true), `WINEDLLOVERRIDES="it's=b;version=n,b" %command%`);
 });
 
 test("turning off a repeated assignment does not reactivate an earlier one", () => {
   const result = editWineDllOverride('WINEDLLOVERRIDES="version=n,b" WINEDLLOVERRIDES="version=n,b" %command%', "version", false);
-  assert.equal(result, 'WINEDLLOVERRIDES="version=n,b" WINEDLLOVERRIDES="" %command%');
+  assert.equal(result, `WINEDLLOVERRIDES="version=n,b" WINEDLLOVERRIDES='' %command%`);
   assert.equal(inspectWineDllOverride(result, "version").enabled, false);
 });
 
 test("enabling replaces conflicting rules and disabling an absent rule is a no-op", () => {
-  assert.equal(editWineDllOverride('', "version", true), 'WINEDLLOVERRIDES="version=n,b" %command%');
-  assert.equal(editWineDllOverride('WINEDLLOVERRIDES="version,dxgi=b" %command%', "version", true), 'WINEDLLOVERRIDES="dxgi=b;version=n,b" %command%');
+  assert.equal(editWineDllOverride('', "version", true), "WINEDLLOVERRIDES='version=n,b' %command%");
+  assert.equal(editWineDllOverride('WINEDLLOVERRIDES="version,dxgi=b" %command%', "version", true), "WINEDLLOVERRIDES='dxgi=b;version=n,b' %command%");
   const source = 'WINEDLLOVERRIDES="version=b;dxgi=n,b" %command%';
   assert.equal(editWineDllOverride(source, "version", false), source);
 });
@@ -80,7 +87,7 @@ test("a switch edit reads fresh Steam settings before saving", async t => {
   } };
   t.after(() => { delete globalThis.SteamClient; });
   await setWineDllOverride(10, "version", true);
-  assert.deepEqual(writes, [[10, 'FOO=latest WINEDLLOVERRIDES="dxgi=n,b;version=n,b" %command%']]);
+  assert.deepEqual(writes, [[10, "FOO=latest WINEDLLOVERRIDES='dxgi=n,b;version=n,b' %command%"]]);
 });
 
 test("another owner's debug command and shared folders survive enabling and disabling a DLL override", () => {
@@ -93,7 +100,7 @@ test("another owner's debug command and shared folders survive enabling and disa
     assert.equal(removed.trim(), source.replace('WINEDLLOVERRIDES="version=n,b" ', "").trim());
     const existing = `WINEDLLOVERRIDES="dxgi=n,b" ${source}`;
     const toggled = editWineDllOverride(editWineDllOverride(existing, "version", true), "version", false);
-    assert.equal(toggled.includes('WINEDLLOVERRIDES="dxgi=n,b"'), true);
+    assert.match(toggled, /WINEDLLOVERRIDES=(["'])dxgi=n,b\1/);
   }
 });
 
