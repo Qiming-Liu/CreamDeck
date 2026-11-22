@@ -1,6 +1,7 @@
 const errors: Record<string, string> = {
   operation_failed: "The operation failed. Check the log for details.",
   game_not_found: "This game is not installed or its library is unavailable.",
+  game_in_library: "This game is in the library again. Uninstall the unlocker from its page.",
   invalid_target: "Choose an existing folder inside this game's installation.",
   invalid_unlocker: "Choose SmokeAPI or CreamAPI.",
   unsupported_install: "This game uses an unlocker that is no longer supported. Remove it with the tool that installed it first.",
@@ -188,11 +189,9 @@ const translations = {
   recheckDone: "Done, check again",
 
   // About
-  aboutTitle: "About",
   avatar: (name: string) => `${name} avatar`,
-  github: "GitHub",
+  gitlab: "GitLab",
   bilibili: "Bilibili",
-  plugin: "Plugin",
   version: "Version",
   latestVersion: (version: string) => `Latest v${version}`,
   feedback: "Report a problem",
@@ -211,9 +210,14 @@ const translations = {
   installedGames: "Games with an unlocker",
   gameMeta: (unlocker: string, method: string, count: number) => `${unlocker} · ${method} · ${count} DLC`,
   notInLibrary: "No longer in the library",
+  removeLeftover: "Remove",
+  removeLeftoverTitle: (appId: string) => `Remove AppID ${appId}?`,
+  removeLeftoverConfirm: "Steam no longer has this game. Its record is removed, and so are its unlocker files if the game folder is still there.",
+  toastLeftoverRemoved: (appId: string) => `AppID ${appId} · Removed`,
+  toastLeftoverFiles: "Record and unlocker files removed",
+  toastLeftoverRecord: "Record removed; no matching files found",
   onlyInstalled: "Only installed games are listed",
   noneInstalled: "No games yet",
-  contextHint: "Game context menu → CreamDeck",
   logs: "Logs",
 
   // Logs
@@ -221,10 +225,8 @@ const translations = {
   clear: "Clear",
   lastLines: (count: number) => `Last ${count} entries`,
   logsEmpty: "The log is empty.",
-  logsHint: "When reporting a problem, export the log and attach the file to the issue.",
   exported: (path: string) => `Exported to ${path}`,
   cleared: "Log cleared",
-  back: "Back",
 };
 
 export type Translations = typeof translations;

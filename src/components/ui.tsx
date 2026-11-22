@@ -1,6 +1,7 @@
 import { DialogButton, Focusable } from "@decky/ui";
 import type { CSSProperties, ReactNode } from "react";
 import { pageWindow } from "../domain/display";
+import { adaptiveNavGlyph } from "./AdaptiveNavGlyph";
 import { useLanguage } from "../utils/i18n";
 
 export const C = {
@@ -58,6 +59,8 @@ export const STYLES = `
 .cd-search input.DialogInput.gpfocus, .cd-search .gpfocuswithin input.DialogInput { border-color: ${C.white};
   background: rgba(255,255,255,.12); }
 .cd-dropdown .DialogDropDown { min-width: 170px; height: 38px; padding: 0 12px 0 16px; font-size: 14px; }
+.cd-glyph { display: inline-flex; align-items: center; height: 20px; flex: 0 0 auto; }
+.cd-glyph svg, .cd-glyph img { height: 20px !important; width: auto !important; }
 `;
 
 // One font per language for every CreamDeck surface, so Latin text and digits do
@@ -81,6 +84,8 @@ const svg = (children: ReactNode, size = 18, width = 2, extra?: CSSProperties) =
 
 export const Icons = {
   list: () => svg(<path d="M4 6h16M4 12h16M4 18h16" />),
+  library: (size = 16) => svg(<><rect x="3" y="4" width="5" height="16" rx="1" /><rect x="10" y="4" width="5" height="16" rx="1" />
+    <path d="M17.5 5.5l3 14" /></>, size),
   sliders: () => svg(<><path d="M4 7h16M4 12h16M4 17h16" /><circle cx="9" cy="7" r="2" fill="#0e141b" />
     <circle cx="15" cy="12" r="2" fill="#0e141b" /><circle cx="8" cy="17" r="2" fill="#0e141b" /></>),
   wrench: () => svg(<path d="M14 4a5 5 0 00-5 7l-6 6 2 2 6-6a5 5 0 007-5l-3 3-2-2 3-3z" />),
@@ -99,9 +104,8 @@ export const Icons = {
   back: () => svg(<path d="M15 5l-7 7 7 7" />, 18, 2.4),
   export: () => svg(<path d="M12 4v11M7 10l5 5 5-5M5 20h14" />, 16),
   trash: () => svg(<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />, 16),
-  github: () => svg(<path d="M9 19c-4 1.3-4-2-6-2.5M15 21v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 00-1.3-3.2 4.2 4.2 0 00-.1-3.2s-1-.3-3.3 1.3a11.4 11.4 0 00-6 0C7 2.8 6 3.1 6 3.1a4.2 4.2 0 00-.1 3.2A4.6 4.6 0 004.6 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21" />, 16),
+  gitlab: () => svg(<path d="M22 13.3L18.7 3.3a.4.4 0 00-.8 0l-2.2 6.7H8.3L6.1 3.3a.4.4 0 00-.8 0L2 13.3a.7.7 0 00.3.8L12 21l9.7-6.9a.7.7 0 00.3-.8z" />, 16),
   bilibili: () => svg(<><rect x="3" y="6" width="18" height="14" rx="3" /><path d="M8 3l3 3M16 3l-3 3M9 12v2M15 12v2" /></>, 16),
-  doc: () => svg(<><path d="M6 3h9l4 4v14H6z" /><path d="M9 11h7M9 15h7M9 19h4" /></>),
 };
 
 export function Switch({ on, mixed, disabled }: { on: boolean; mixed?: boolean; disabled?: boolean }) {
@@ -112,6 +116,16 @@ export function Switch({ on, mixed, disabled }: { on: boolean; mixed?: boolean; 
     <span style={{ position: "absolute", top: 3, width: 18, height: 18, borderRadius: 9, ...knob,
       background: disabled ? C.disabled : on || mixed ? C.white : C.muted }} />
   </span>;
+}
+
+// Steam's glyph for a controller button (Steam's numbering, see NAV_BUTTON), or
+// its symbol on a grey disc where Steam's component is not found.
+export function NavGlyph({ button, fallback }: { button: number; fallback: string }) {
+  const SteamGlyph = adaptiveNavGlyph();
+  if (SteamGlyph) return <span className="cd-glyph"><SteamGlyph button={button} bAllowKeyboard /></span>;
+  return <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
+    minWidth: 20, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 10, background: C.button,
+    color: C.text, fontSize: 11, fontWeight: 700, flex: "0 0 auto" }}>{fallback}</span>;
 }
 
 export function Glyph({ letter, light }: { letter: string; light?: boolean }) {

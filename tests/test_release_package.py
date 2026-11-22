@@ -12,7 +12,8 @@ from scripts import package_release
 
 class ReleasePackageTests(unittest.TestCase):
     def fixture(self, root):
-        for name in ('main.py', 'package.json', 'plugin.json', 'README.md', 'NOTICE.md', 'LICENSE',
+        for name in ('main.py', 'package.json', 'plugin.json', 'README.md', 'README.zh-CN.md', 'README.zh-TW.md',
+                     'NOTICE.md', 'LICENSE',
                      'py_modules/__init__.py', 'py_modules/worker.py', 'dist/index.js',
                      'dist/index.js.map', 'resources/example.dll',
                      '.env', 'py_modules/__pycache__/stale.pyc'):
@@ -34,6 +35,8 @@ class ReleasePackageTests(unittest.TestCase):
             names = [path.relative_to(destination).as_posix() for path in destination.rglob('*') if path.is_file()]
             self.assertEqual([name for name in names if name.endswith('.py')], ['main.py'])
             self.assertIn('py_modules/worker.pyc', names)
+            # Only the English README ships; the About tab opens the translations on GitLab.
+            self.assertEqual([name for name in names if 'README' in name], ['README.md'])
             self.assertFalse(any('.env' in name or '__pycache__' in name
                                  or name.endswith('.map') for name in names))
             self.assertEqual((root / 'py_modules/worker.py').read_text(), 'pass\n')

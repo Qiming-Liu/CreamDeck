@@ -6,6 +6,6 @@
   "publish": {
     "tags": ["dlc", "steam", "root"],
     "description": "Select an installed Steam game from its library context menu and unlock its DLC (SmokeAPI/CreamAPI), directly on the Steam Deck.",
-    "image": ""
+    "image": "https://gitlab.com/alan-liu/CreamDeck/-/raw/main/docs/cover.png"
   }
 }

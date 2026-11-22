@@ -1,18 +1,20 @@
 import { Focusable, ModalRoot, Navigation, showModal } from "@decky/ui";
 import qrcode from "qrcode-generator";
 import { useMemo } from "react";
-import { PiHandTapFill } from "react-icons/pi";
 import type { ReactNode } from "react";
 import { AVATAR } from "../assets/avatar";
-import { Button, C, Icons, Main, PageTitle, SectionLabel, PageStyle, VersionLine } from "../components/ui";
-import { RELEASES_URL, useUpdateInfo } from "../hooks/useUpdateInfo";
+import { LOGO } from "../assets/logo";
+import { RECOMMENDED_LOGO } from "../assets/recommended";
+import { Button, C, Icons, Main, SectionLabel, PageStyle, VersionLine } from "../components/ui";
+import { readmeUrl } from "../domain/readme";
+import { RELEASES_URL, REPOSITORY_URL, useUpdateInfo } from "../hooks/useUpdateInfo";
 import { useLanguage, useTranslations } from "../utils/i18n";
+import LogPanel from "./LogPanel";
 
 const AUTHOR = "ProSS及时行乐";
-const GITHUB_URL = "https://github.com/Qiming-Liu/CreamDeck#creamdeck";
 const BILIBILI_URL = "https://space.bilibili.com/23706122";
-const ISSUES_URL = "https://github.com/Qiming-Liu/CreamDeck/issues/new";
-const RECOMMENDED = { name: "DeckyGCM", url: "https://github.com/Qiming-Liu/Decky-Game-Cheats-Manager#deckygcm" };
+const ISSUES_URL = `${REPOSITORY_URL}/-/issues/new`;
+const RECOMMENDED = { name: "DeckyGCM", url: "https://gitlab.com/alan-liu/Decky-Game-Cheats-Manager#deckygcm" };
 const CREDITS = [
   { name: "CreamInstaller", author: "FroggMaster" },
   { name: "CreamAPI", author: "deadmau5" },
@@ -26,8 +28,8 @@ export const openLink = (url: string) => Navigation.NavigateToExternalWeb(url);
 export function feedbackUrl(version: string, os: string, proton: string, appId: string): string {
   // Kept short: every character makes the on-screen QR code denser.
   const body = [`CreamDeck v${version}`, os || "unknown OS", proton || "no Proton", `AppID ${appId}`,
-    "Attach: Logs > Export"].join("\n");
-  return `${ISSUES_URL}?${new URLSearchParams({ body })}`;
+    "Attach: About > Logs > Export"].join("\n");
+  return `${ISSUES_URL}?${new URLSearchParams({ "issue[description]": body })}`;
 }
 
 function QrCode({ text, label, size = 220 }: { text: string; label: string; size?: number }) {
@@ -70,71 +72,57 @@ export default function AboutTab({ appId, compatTool }: { appId: string; compatT
   const t = useTranslations();
   const update = useUpdateInfo();
   const version = update?.current ?? "";
-  const english = useLanguage() === "en";
+  const language = useLanguage();
+  const english = language === "en";
   const feedback = feedbackUrl(version, update?.os ?? "", compatTool, appId);
 
   return <Main gap={16}>
-    <PageTitle>{t.aboutTitle}</PageTitle>
     {/* One row of columns, so right from the author links reaches the right column. */}
     <Focusable flow-children="row" style={{ flex: "1 1 auto", minHeight: 0, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 28 }}>
-      <Focusable flow-children="column" style={{ display: "flex", flexDirection: "column", minHeight: 0, gap: 18, overflowY: "auto" }}>
-        <Focusable flow-children="row" style={{ boxSizing: "border-box", padding: "10px 12px", borderRadius: 4, background: C.well,
+      <Focusable flow-children="column" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflowY: "auto" }}>
+        <Focusable flow-children="row" style={{ boxSizing: "border-box", padding: "8px 12px", borderRadius: 4, background: C.well,
           display: "flex", alignItems: "center", gap: 12, flex: "0 0 auto" }}>
           <img src={AVATAR} alt={t.avatar(AUTHOR)} style={{ width: 44, height: 44, flex: "0 0 44px", borderRadius: 22,
             objectFit: "cover", background: C.button }} />
           <div style={{ flex: "1 1 auto", minWidth: 0, fontSize: 18, fontWeight: 700, color: C.white,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{AUTHOR}</div>
           {!english && <Button icon label={t.bilibili} onClick={() => openLink(BILIBILI_URL)}>{Icons.bilibili()}</Button>}
-          <Button icon label={t.github} onClick={() => openLink(GITHUB_URL)}>{Icons.github()}</Button>
+          <Button icon label={t.gitlab} onClick={() => openLink(readmeUrl(REPOSITORY_URL, language))}>{Icons.gitlab()}</Button>
         </Focusable>
 
-        <div style={{ display: "flex", flexDirection: "column", flex: "0 0 auto" }}>
-          <SectionLabel>{t.plugin}</SectionLabel>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px",
-            borderTop: `1px solid ${C.line}`, fontSize: 14 }}>
-            <span style={{ color: C.white }}>{t.version}</span>
-            {version && <VersionLine current={version} latest={update?.latest} label={t.latestVersion}
-              onOpen={() => openLink(RELEASES_URL)} />}
-          </div>
-          <Focusable flow-children="row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px",
-            borderTop: `1px solid ${C.line}`, borderBottom: `1px solid ${C.line}` }}>
-            <div style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-              <span style={{ fontSize: 14, color: C.white }}>{t.feedback}</span>
-              <span style={{ fontSize: 12, color: C.muted }}>{t.feedbackDescription}</span>
-            </div>
-            <LinkButton icon={Icons.github()} onClick={() => showModal(<FeedbackModal url={feedback} />, window)}>{t.feedbackIssue}</LinkButton>
-          </Focusable>
+        <div style={row}>
+          <img src={LOGO} alt="" width={40} height={40} style={{ flex: "0 0 40px", borderRadius: 8 }} />
+          <RowText title="CreamDeck" description={t.deckyPlugin} />
+          {version && <span aria-label={t.version} style={{ flex: "0 0 auto", fontSize: 12 }}>
+            <VersionLine current={version} latest={update?.latest} label={t.latestVersion} onOpen={() => openLink(RELEASES_URL)} /></span>}
         </div>
+        <Focusable flow-children="row" style={{ ...row, borderBottom: `1px solid ${C.line}` }}>
+          <RowText title={t.feedback} description={t.feedbackDescription} />
+          <LinkButton icon={Icons.gitlab()} onClick={() => showModal(<FeedbackModal url={feedback} />, window)}>{t.feedbackIssue}</LinkButton>
+        </Focusable>
+
+        <SectionLabel top={6}>{t.credits}</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", flex: "0 0 auto", borderBottom: `1px solid ${C.line}` }}>
+          {CREDITS.map(credit => <div key={credit.name} style={row}>
+            <RowText title={credit.name} />
+            <span style={{ flex: "0 0 auto", fontSize: 12, color: C.muted }}>{credit.author}</span>
+          </div>)}
+        </div>
+
+        <SectionLabel top={6}>{t.recommended}</SectionLabel>
+        <Focusable className="cd-focus" onActivate={() => openLink(RECOMMENDED.url)} style={{ ...row, borderBottom: `1px solid ${C.line}` }}>
+          <img src={RECOMMENDED_LOGO} alt="" width={36} height={36} style={{ flex: "0 0 36px", borderRadius: 6 }} />
+          <RowText title={RECOMMENDED.name} description={t.gcmDescription} />
+          <span style={{ flex: "0 0 auto", fontSize: 12, color: C.muted }}>{t.deckyPlugin}</span>
+          {Icons.chevronRight()}
+        </Focusable>
       </Focusable>
 
-      <Focusable flow-children="column" style={{ display: "flex", flexDirection: "column", minHeight: 0, gap: 18 }}>
-        <div style={{ display: "flex", flexDirection: "column", flex: "0 0 auto" }}>
-          <SectionLabel>{t.credits}</SectionLabel>
-          {CREDITS.map((credit, index) => {
-            const style = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px",
-              borderTop: `1px solid ${C.line}`, borderBottom: index === CREDITS.length - 1 ? `1px solid ${C.line}` : undefined,
-              fontSize: 14 } as const;
-            return <div key={credit.name} style={style}>
-              <span style={{ color: C.white }}>{credit.name}</span>
-              <span style={{ color: C.muted }}>{credit.author}</span>
-            </div>;
-          })}
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", flex: "0 0 auto" }}>
-          <SectionLabel>{t.recommended}</SectionLabel>
-          <Focusable className="cd-focus" onActivate={() => openLink(RECOMMENDED.url)} style={{ display: "flex",
-            alignItems: "center", gap: 14, padding: "12px 14px", borderTop: `1px solid ${C.line}`, borderBottom: `1px solid ${C.line}` }}>
-            <span aria-hidden="true" style={{ display: "inline-flex", width: 44, height: 44, flex: "0 0 44px", borderRadius: 6,
-              background: "rgba(26,159,255,.18)", color: C.blueText, alignItems: "center", justifyContent: "center" }}><PiHandTapFill size={22} /></span>
-            <span style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-              <span style={{ fontSize: 16, color: C.white }}>{RECOMMENDED.name}</span>
-              <span style={{ fontSize: 12, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {t.gcmDescription}</span>
-            </span>
-            <span style={{ flex: "0 0 auto", fontSize: 12, color: C.muted }}>{t.deckyPlugin}</span>
-            {Icons.chevronRight()}
-          </Focusable>
+      {/* The log gets the whole right half. */}
+      <Focusable flow-children="column" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 0 }}>
+          <SectionLabel>{t.logs}</SectionLabel>
+          <LogPanel />
         </div>
       </Focusable>
     </Focusable>
@@ -143,4 +131,16 @@ export default function AboutTab({ appId, compatTool }: { appId: string; compatT
 
 function LinkButton({ url, icon, onClick, children }: { url?: string; icon: ReactNode; onClick?: () => void; children: ReactNode }) {
   return <Button onClick={onClick ?? (() => url && openLink(url))} style={{ padding: "0 14px" }}>{icon}{children}</Button>;
+}
+
+// One list row of the left column; the padding shrinks on a short screen.
+const row = { display: "flex", alignItems: "center", gap: 14, padding: "clamp(4px, 1.2vh, 11px) 14px",
+  borderTop: `1px solid ${C.line}`, flex: "0 0 auto" } as const;
+
+function RowText({ title, description }: { title: string; description?: string }) {
+  return <span style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+    <span style={{ fontSize: 16, color: C.white, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
+    {description && <span style={{ fontSize: 12, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+      {description}</span>}
+  </span>;
 }

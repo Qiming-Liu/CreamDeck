@@ -62,6 +62,33 @@ def _library_folders() -> list[str]:
     return folders
 
 
+def leftover_directories() -> list[str]:
+    """Folders under ``common`` that no app manifest claims: what Steam leaves behind
+    when an uninstalled game still had files Steam didn't put there.
+
+    A library with a manifest that can't be read is skipped as a whole, so a
+    folder is never called a leftover only because its manifest is damaged.
+    """
+    found: list[str] = []
+    for library_dir in _library_folders():
+        claimed = set()
+        try:
+            for name in os.listdir(library_dir):
+                if not (name.startswith("appmanifest_") and name.endswith(".acf")):
+                    continue
+                with open(os.path.join(library_dir, name), "r", encoding="utf-8", errors="ignore") as f:
+                    install_dir = get_child(parse(f.read()), "AppState", "installdir")
+                if not install_dir:
+                    raise ValueError(f"No installdir in {name}")
+                claimed.add(install_dir)
+            with os.scandir(os.path.join(library_dir, "common")) as entries:
+                found.extend(entry.path for entry in entries
+                             if entry.is_dir(follow_symlinks=False) and entry.name not in claimed)
+        except (OSError, ValueError):
+            continue
+    return sorted(found)
+
+
 def find_game(app_id: str) -> Optional[GameInfo]:
     """Looks for appmanifest_<app_id>.acf across every known library folder."""
     for library_dir in _library_folders():

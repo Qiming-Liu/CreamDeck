@@ -1,6 +1,6 @@
 {
   "name": "creamdeck",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Decky Loader plugin porting CreamInstaller's Steam DLC unlocking to Steam Deck.",
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Qiming-Liu/CreamDeck.git"
+    "url": "git+https://gitlab.com/alan-liu/CreamDeck.git"
   },
   "keywords": [
     "decky",
@@ -27,9 +27,9 @@
   "author": "Qiming-Liu",
   "license": "GPL-3.0",
   "bugs": {
-    "url": "https://github.com/Qiming-Liu/CreamDeck/issues"
+    "url": "https://gitlab.com/alan-liu/CreamDeck/-/issues"
   },
-  "homepage": "https://github.com/Qiming-Liu/CreamDeck#readme",
+  "homepage": "https://gitlab.com/alan-liu/CreamDeck#readme",
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
     "@decky/ui": "^4.11.0",

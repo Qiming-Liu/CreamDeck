@@ -1,7 +1,11 @@
 ﻿# CreamDeck
 
-[![Build](https://img.shields.io/github/actions/workflow/status/Qiming-Liu/CreamDeck/pr-build-test.yml?branch=main&label=build)](https://github.com/Qiming-Liu/CreamDeck/actions/workflows/pr-build-test.yml)
-[![License: GPL 3.0](https://img.shields.io/github/license/Qiming-Liu/CreamDeck)](./LICENSE)
+English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
+
+![CreamDeck](docs/cover.png)
+
+[![Build](https://gitlab.com/alan-liu/CreamDeck/badges/main/pipeline.svg?key_text=build)](https://gitlab.com/alan-liu/CreamDeck/-/pipelines)
+[![License: GPL 3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](./LICENSE)
 
 A [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin for
 managing Steam DLC unlockers on Steam Deck, using **SmokeAPI** and **CreamAPI**.
@@ -9,9 +13,9 @@ Supports Windows games running through Proton; native Linux games are not suppor
 
 ## Installation
 
-Download **CreamDeck.&lt;version&gt;.zip** from the [latest release](https://github.com/Qiming-Liu/CreamDeck/releases/latest)
+Download **CreamDeck.&lt;version&gt;.zip** from the [latest release](https://gitlab.com/alan-liu/CreamDeck/-/releases/permalink/latest)
 and install it through Decky Loader's developer settings. Use the plugin ZIP,
-not GitHub's **Source code.zip**.
+not GitLab's **Source code (zip)**.
 
 ## Using the plugin
 
@@ -30,10 +34,15 @@ has four tabs:
    this plugin's own item in blue.
 3. **Maintenance**: see how each installed file will be handled, then
    uninstall. Files changed by a game update or another tool are kept.
-4. **About**: version, update notice, feedback QR code and credits.
+4. **About**: version, update notice, feedback QR code, credits and the shared
+   log (export it and attach the file when reporting a problem).
 
-Games that don't run with Proton show a single "Not supported" page. The
-quick access panel lists games with an unlocker and opens the shared log.
+Games that don't run with Proton show a single "Not supported" page.
+
+The Quick Access panel shows how to open a game's page and lists games with an
+unlocker. A game that Steam has uninstalled is marked **No longer in the
+library**; **Remove** clears its record and, when the folder it left behind can
+be identified, the unlocker files still in it.
 
 New installations default to **CreamAPI + direct replacement**. Uninstall
 first to change the unlocker or install method; the DLC selection is kept for

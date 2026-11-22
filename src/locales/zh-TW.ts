@@ -3,6 +3,7 @@ import type { Translations } from "./en";
 const errors: Record<string, string> = {
   operation_failed: "操作失敗，詳細原因請看日誌。",
   game_not_found: "遊戲沒有安裝，或收藏庫暫時讀不到。",
+  game_in_library: "遊戲又回到收藏庫了，請到它的頁面解除安裝解鎖器。",
   invalid_target: "請選擇遊戲安裝目錄裡現有的資料夾。",
   invalid_unlocker: "請選擇 SmokeAPI 或 CreamAPI。",
   unsupported_install: "這個遊戲安裝的解鎖器已不再支援。請先用當初安裝它的工具解除安裝。",
@@ -175,11 +176,9 @@ const translations: Translations = {
   howToSteps: "遊戲內容 → 相容性 → 選擇一個 Proton，再回來。",
   recheckDone: "改好了，重新檢查",
 
-  aboutTitle: "關於",
   avatar: name => `${name} 頭像`,
-  github: "GitHub",
+  gitlab: "GitLab",
   bilibili: "B站",
-  plugin: "外掛",
   version: "版本",
   latestVersion: version => `最新版 v${version}`,
   feedback: "回報問題",
@@ -197,19 +196,22 @@ const translations: Translations = {
   installedGames: "裝了解鎖器的遊戲",
   gameMeta: (unlocker, method, count) => `${unlocker} · ${method} · ${count} 個 DLC`,
   notInLibrary: "已不在收藏庫",
+  removeLeftover: "清除",
+  removeLeftoverTitle: appId => `清除 AppID ${appId}？`,
+  removeLeftoverConfirm: "Steam 裡已經沒有這個遊戲。會刪掉這筆紀錄；遊戲資料夾還在的話，也刪掉裡面的解鎖器檔案。",
+  toastLeftoverRemoved: appId => `AppID ${appId} · 已清除`,
+  toastLeftoverFiles: "紀錄和解鎖器檔案都刪了",
+  toastLeftoverRecord: "紀錄刪了，沒找到對應的檔案",
   onlyInstalled: "只列出已安裝的遊戲",
   noneInstalled: "還沒有",
-  contextHint: "遊戲選單 → CreamDeck",
   logs: "日誌",
 
   export: "匯出",
   clear: "清空",
   lastLines: count => `最近 ${count} 筆`,
   logsEmpty: "日誌是空的。",
-  logsHint: "回報問題時，匯出日誌並把檔案附到 Issue 裡。",
   exported: path => `已匯出到 ${path}`,
   cleared: "日誌已清空",
-  back: "返回",
 };
 
 export default translations;

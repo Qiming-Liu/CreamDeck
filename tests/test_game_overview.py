@@ -118,6 +118,58 @@ class InstalledGamesTest(unittest.IsolatedAsyncioTestCase):
         ])
 
 
+class RemoveLeftoverTest(unittest.IsolatedAsyncioTestCase):
+    """A game Steam uninstalled: its manifest is gone, its folder and the record remain."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.library = Path(self.temporary.name, "steamapps")
+        for name in ("Gone", "Kept"):
+            (self.library / "common" / name).mkdir(parents=True)
+        (self.library / "appmanifest_2.acf").write_text('"AppState"\n{\n\t"installdir"\t\t"Kept"\n}\n')
+        for patcher in (patch.object(decky, "DECKY_PLUGIN_SETTINGS_DIR", str(Path(self.temporary.name, "settings"))),
+                        patch("main.steam_library._library_folders", return_value=[str(self.library)]),
+                        patch("main.steam_library.find_game", return_value=None)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def install(self, folder, app_id="1"):
+        directory = self.library / "common" / folder
+        (directory / "cream_api.ini").write_text(f"appid = {app_id}")
+        (directory / "version.dll").write_bytes(b"proxy")
+        (directory / "save.dat").write_bytes(b"user data")
+        install_state.set_installed(app_id, "creamapi", ["5"], proxy=True, proxy_dll="version",
+                                    target_directory=".", files=manager.snapshot(str(directory)))
+        return directory
+
+    async def test_deletes_matching_files_and_forgets_the_game(self):
+        directory = self.install("Gone")
+        result = await main.Plugin().remove_leftover("1")
+        self.assertEqual(result, {"success": True, "files_removed": True})
+        self.assertEqual(sorted(os.listdir(directory)), ["save.dat"])
+        self.assertIsNone(install_state.get_state("1"))
+
+    async def test_changed_files_and_claimed_folders_are_left_alone(self):
+        directory = self.install("Gone")
+        (directory / "cream_api.ini").write_text("edited by the user")
+        # Another game's folder holds the very same files; a manifest claims it.
+        claimed = self.install("Kept")
+        result = await main.Plugin().remove_leftover("1")
+        self.assertEqual(result, {"success": True, "files_removed": False})
+        for folder in (directory, claimed):
+            self.assertEqual(sorted(os.listdir(folder)), ["cream_api.ini", "save.dat", "version.dll"])
+        self.assertIsNone(install_state.get_state("1"))
+
+    async def test_refuses_a_game_that_is_back_in_the_library(self):
+        directory = self.install("Gone")
+        with patch("main.steam_library.find_game", return_value={"name": "Back"}):
+            result = await main.Plugin().remove_leftover("1")
+        self.assertEqual(result["error_code"], "game_in_library")
+        self.assertIn("version.dll", os.listdir(directory))
+        self.assertTrue(install_state.get_state("1")["installed"])
+
+
 class LogRpcTest(unittest.IsolatedAsyncioTestCase):
     async def test_frontend_entries_are_read_exported_and_cleared(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -153,6 +205,21 @@ class UpdateCheckTest(unittest.TestCase):
         self.assertFalse(update_check.newer("1.0.5", "1.0.5"))
         self.assertFalse(update_check.newer(None, "1.0.5"))
         self.assertFalse(update_check.newer("nightly", "1.0.5"))
+
+    def test_test_builds_are_offered_only_to_testers(self):
+        for installed, release, offered in (
+            ("1.0.6", "v1.0.7-test", False),
+            ("1.0.6", "v1.0.6-test", False),
+            ("1.0.7-test", "v1.0.7", True),
+            ("1.0.6-test", "v1.0.6", True),
+            ("1.0.7-test", "v1.0.7-test", False),
+            ("1.0.7-test", "v1.0.7-test2", True),
+            ("1.0.7-test2", "v1.0.7-test10", True),
+            ("1.0.7-test2", "v1.0.7-test", False),
+            ("1.0.6-test", "v1.0.7-test", True),
+            ("1.0.7-test", "v1.0.6", False),
+        ):
+            self.assertEqual(update_check.newer(update_check._canonical(release), installed), offered, (installed, release))
 
     def test_mistyped_tags_count_as_the_same_version(self):
         for tag in ("v1.2.0", "1.2.0", "V1.2.0", "v1.2", "1.2", "1.20", "v1.20", " v1.2.0 "):

@@ -76,6 +76,24 @@ def locate(app_id, relative=None):
     return game, directory, state, selected
 
 
+def find_leftover(state):
+    """The folder an uninstalled game left behind, known by the recorded files.
+
+    Steam's manifest is gone, so the folder is found by content: an unclaimed
+    folder whose unlocker files all match the record. Anything less certain
+    (no match, or more than one) yields None and no file is touched.
+    """
+    matches = []
+    for folder in steam_library.leftover_directories():
+        try:
+            directory = manager.target(folder, state.get("target_directory") or ".")
+            if manager.integrity(directory, state)[0] == "healthy":
+                matches.append(directory)
+        except manager.OperationError:
+            continue
+    return matches[0] if len(matches) == 1 else None
+
+
 class Plugin:
     @memory_watch.tracked
     async def get_game_page(self, app_id: str, target_directory: str | None = None):
@@ -228,6 +246,32 @@ class Plugin:
     @plugin_log.user_action(decky.logger, lambda app_id: f"Force cleanup of unlocker files for {game_label(app_id)}")
     async def force_cleanup(self, app_id: str):
         return await self._remove(app_id)
+
+    @memory_watch.tracked
+    @plugin_log.user_action(decky.logger, lambda app_id: f"Remove the leftovers of uninstalled app {app_id}")
+    async def remove_leftover(self, app_id: str):
+        """Forget a game Steam no longer has, deleting its unlocker files when the
+        folder is still there and they are unchanged."""
+        async with manager.LOCK:
+            try:
+                if not isinstance(app_id, str) or not app_id.isdigit():
+                    raise manager.OperationError("game_not_found")
+                if steam_library.find_game(app_id) is not None:
+                    raise manager.OperationError("game_in_library")
+                state = install_state.get_state(app_id)
+                directory = None
+                if state and state.get("installed") and state.get("files"):
+                    directory = await asyncio.to_thread(find_leftover, state)
+                if directory is None:
+                    install_state.restore(app_id, None)
+                    return {"success": True, "files_removed": False}
+
+                async def mutate(stage):
+                    manager.clean_owned(stage, state)
+                await manager.transaction(app_id, directory, mutate, lambda _: install_state.restore(app_id, None))
+                return {"success": True, "files_removed": True}
+            except Exception as error:
+                return failure(error)
 
     @memory_watch.tracked
     async def list_installed_games(self):

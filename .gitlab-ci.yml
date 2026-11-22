@@ -1,0 +1,62 @@
+# GitLab CI for the primary repository: checks only. The GitHub Actions
+# workflows in .github/ stay unchanged for the GitHub mirror.
+#
+# Merge requests, pushes to main and manual runs (Build > Pipelines > Run
+# pipeline, or the API, e.g. glab ci run) build, type-check and test the plugin. Releases are not made here:
+# they are built and packaged locally, then uploaded to GitLab.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+stages:
+  - check
+
+default:
+  image: python:3.14
+
+frontend:
+  stage: check
+  # Python 3.14 (Decky Loader's bundled interpreter) plus Node 20 and pnpm.
+  before_script:
+    - |
+      set -eu
+      base="https://nodejs.org/dist/latest-v20.x"
+      curl -fsSLO "$base/SHASUMS256.txt"
+      file=$(grep -o "node-v[0-9.]*-linux-x64.tar.xz" SHASUMS256.txt)
+      curl -fsSLO "$base/$file"
+      grep " $file\$" SHASUMS256.txt | sha256sum -c -
+      tar -xJf "$file" -C /usr/local --strip-components=1
+      rm -f "$file" SHASUMS256.txt
+      npm install -g --silent pnpm@12.16.1
+  script:
+    - pnpm install --frozen-lockfile=false
+    - pnpm exec tsc --noEmit
+    - pnpm run test:tooling
+    - pnpm run build
+  artifacts:
+    name: creamdeck-dist
+    paths: [dist/]
+    expire_in: 1 week
+
+backend:
+  stage: check
+  script:
+    - python -m py_compile main.py
+    - find py_modules -name '*.py' -print0 | xargs -0 python -m py_compile
+    - python -m unittest discover -s tests -v
+
+plugin-manifest:
+  stage: check
+  script:
+    - |
+      python - <<'EOF'
+      import json
+      with open("plugin.json") as f:
+          data = json.load(f)
+      for field in ("name", "author", "flags", "api_version"):
+          assert field in data, f"plugin.json missing required field: {field}"
+      print("plugin.json OK:", data["name"])
+      EOF

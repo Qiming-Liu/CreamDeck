@@ -4,10 +4,9 @@ import type { ComponentType } from "react";
 
 import contextMenuPatch, { LibraryContextMenu } from "./patch";
 import CreamDeckPage from "./views/CreamDeckPage";
-import LogsPage from "./views/LogsPage";
 import { refreshUpdate } from "./hooks/useUpdateInfo";
 import { logFrontend } from "./utils/backend";
-import QuickAccessPanel, { LOGS_ROUTE, PanelTitle, PluginIcon } from "./views/QuickAccessPanel";
+import QuickAccessPanel, { PanelTitle, PluginIcon } from "./views/QuickAccessPanel";
 
 const ROUTE = "/creamdeck/:appid";
 
@@ -41,7 +40,6 @@ export default definePlugin(() => {
   void refreshUpdate();
 
   addRoute(ROUTE, GameRoute, false);
-  addRoute(LOGS_ROUTE, LogsPage, true);
 
   return {
     name: "CreamDeck",
@@ -50,7 +48,6 @@ export default definePlugin(() => {
     icon: <PluginIcon />,
     onDismount() {
       routerHook.removeRoute(ROUTE);
-      routerHook.removeRoute(LOGS_ROUTE);
       menuPatch?.unpatch();
     },
   };

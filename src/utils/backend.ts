@@ -91,6 +91,9 @@ export interface InstalledGame {
 }
 
 export const listInstalledGames = callable<[], OperationResult & { games?: InstalledGame[] }>("list_installed_games");
+// For a game Steam no longer has: drops the record and, when its folder is still
+// there with unchanged unlocker files, deletes those too.
+export const removeLeftover = callable<[app_id: string], OperationResult & { files_removed?: boolean }>("remove_leftover");
 export interface LogEntry {
   time: string;
   level: string;

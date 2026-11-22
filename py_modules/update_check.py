@@ -1,6 +1,6 @@
 """Weekly check for a newer CreamDeck release, plus host facts for bug reports.
 
-The result is cached in the plugin settings directory so the GitHub API is
+The result is cached in the plugin settings directory so the GitLab API is
 queried at most once every seven days. A failed check is never fatal: callers
 then only show the current version.
 """
@@ -17,11 +17,13 @@ from atomic_json import write_json
 # Decky's bundled Python has no usable system CA store; Decky supplies one.
 from helpers import get_ssl_context  # type: ignore
 
-RELEASES_URL = "https://api.github.com/repos/Qiming-Liu/CreamDeck/releases/latest"
+# Redirects to the newest release on GitLab.
+RELEASES_URL = "https://gitlab.com/api/v4/projects/alan-liu%2FCreamDeck/releases/permalink/latest"
 CHECK_INTERVAL = 7 * 24 * 60 * 60
 # Retry a failed check after an hour instead of on every page open.
 FAILURE_INTERVAL = 60 * 60
-_VERSION = re.compile(r"[vV]?\s*(\d+(?:\.\d+)*)")
+# An optional label marks a test build, e.g. "1.0.7-test".
+_VERSION = re.compile(r"[vV]?\s*(\d+(?:\.\d+)*)(?:-([0-9A-Za-z][0-9A-Za-z.-]*))?")
 
 
 def _cache_path() -> str:
@@ -29,7 +31,7 @@ def _cache_path() -> str:
 
 
 def _canonical(version) -> str | None:
-    """A version as "x.y.z", or None when it is not one.
+    """A version as "x.y.z" or, for a test build, "x.y.z-label"; None when it is not one.
 
     Release tags should be "vx.y.z", but a mistyped tag still counts: the "v" may
     be missing and "1.2" or "1.20" (a dropped dot) both mean 1.2.0.
@@ -41,22 +43,36 @@ def _canonical(version) -> str | None:
     if len(words) == 2 and len(words[1]) > 1:
         words = [words[0], words[1][:-1], words[1][-1]]
     words += ["0"] * (3 - len(words))
-    return ".".join(str(int(word)) for word in words)
+    label = match.group(2)
+    return ".".join(str(int(word)) for word in words) + (f"-{label}" if label else "")
 
 
-def _parse(version) -> tuple[int, ...] | None:
+def _parse(version) -> tuple | None:
+    """Sort key: the numbers, then a test build before the release of the same
+    number, then test labels with their numbers compared as numbers ("test" <
+    "test2" < "test10")."""
     canonical = _canonical(version)
     if canonical is None:
         return None
-    parts = [int(part) for part in canonical.split(".")]
+    number, _, label = canonical.partition("-")
+    parts = [int(part) for part in number.split(".")]
     while len(parts) > 1 and parts[-1] == 0:
         parts.pop()
-    return tuple(parts)
+    words = tuple((0, int(word)) if word.isdigit() else (1, word.lower())
+                  for word in re.findall(r"\d+|[^\d]+", label))
+    return tuple(parts), not label, words
 
 
 def newer(latest: str | None, current: str) -> bool:
+    """Whether `latest` is worth offering to someone on `current`.
+
+    A test build is offered only to those already testing: an installed
+    release never points at a test build, whatever its number.
+    """
     first, second = _parse(latest or ""), _parse(current)
-    return first is not None and second is not None and first > second
+    if first is None or second is None or (not first[1] and second[1]):
+        return False
+    return first > second
 
 
 def _read_cache() -> dict:
@@ -70,7 +86,7 @@ def _read_cache() -> dict:
 
 def _fetch() -> str:
     request = urllib.request.Request(RELEASES_URL, headers={
-        "Accept": "application/vnd.github+json", "User-Agent": "CreamDeck-update-check"})
+        "Accept": "application/json", "User-Agent": "CreamDeck-update-check"})
     with urllib.request.urlopen(request, timeout=8, context=get_ssl_context()) as response:
         data = json.loads(response.read(256 * 1024).decode("utf-8"))
     latest = _canonical(data.get("tag_name") if isinstance(data, dict) else None)
