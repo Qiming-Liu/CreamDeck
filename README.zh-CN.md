@@ -4,7 +4,7 @@
 
 ![CreamDeck](docs/cover.png)
 
-[![Build](https://gitlab.com/alan-liu/CreamDeck/badges/main/pipeline.svg?key_text=build)](https://gitlab.com/alan-liu/CreamDeck/-/pipelines)
+[![Release](https://img.shields.io/github/v/release/Qiming-Liu/CreamDeck?label=release)](https://github.com/Qiming-Liu/CreamDeck/releases/latest)
 [![License: GPL 3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](./LICENSE)
 
 一款 [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) 插件，在 Steam Deck 上管理 Steam DLC 解锁器，使用 **SmokeAPI** 和 **CreamAPI**。
@@ -12,7 +12,7 @@
 
 ## 安装
 
-从[最新版本](https://gitlab.com/alan-liu/CreamDeck/-/releases/permalink/latest)下载 **CreamDeck.&lt;版本号&gt;.zip**，在 Decky Loader 的开发者设置里安装。请使用插件 ZIP，不要用 GitLab 的 **Source code (zip)**。
+从[最新版本](https://github.com/Qiming-Liu/CreamDeck/releases/latest)下载 **CreamDeck.&lt;版本号&gt;.zip**，在 Decky Loader 的开发者设置里安装。请使用插件 ZIP，不要用 GitHub 的 **Source code (zip)**。
 
 ## 使用方法
 

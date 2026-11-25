@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
 ![CreamDeck](docs/cover.png)
 
-[![Build](https://gitlab.com/alan-liu/CreamDeck/badges/main/pipeline.svg?key_text=build)](https://gitlab.com/alan-liu/CreamDeck/-/pipelines)
+[![Release](https://img.shields.io/github/v/release/Qiming-Liu/CreamDeck?label=release)](https://github.com/Qiming-Liu/CreamDeck/releases/latest)
 [![License: GPL 3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](./LICENSE)
 
 A [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin for
@@ -13,9 +13,9 @@ Supports Windows games running through Proton; native Linux games are not suppor
 
 ## Installation
 
-Download **CreamDeck.&lt;version&gt;.zip** from the [latest release](https://gitlab.com/alan-liu/CreamDeck/-/releases/permalink/latest)
+Download **CreamDeck.&lt;version&gt;.zip** from the [latest release](https://github.com/Qiming-Liu/CreamDeck/releases/latest)
 and install it through Decky Loader's developer settings. Use the plugin ZIP,
-not GitLab's **Source code (zip)**.
+not GitHub's **Source code (zip)**.
 
 ## Using the plugin
 
