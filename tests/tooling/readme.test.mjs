@@ -6,12 +6,12 @@ import ts from "typescript";
 const source = fs.readFileSync(new URL("../../src/domain/readme.ts", import.meta.url), "utf8");
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } });
 const { readmeUrl, README_TRANSLATIONS } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
-const repository = "https://gitlab.com/alan-liu/CreamDeck";
+const repository = "https://github.com/Qiming-Liu/CreamDeck";
 
 test("the About tab opens the README in the reader's language", () => {
   assert.equal(readmeUrl(repository, "en"), `${repository}#creamdeck`);
-  assert.equal(readmeUrl(repository, "zh-CN"), `${repository}/-/blob/main/README.zh-CN.md#creamdeck`);
-  assert.equal(readmeUrl(repository, "zh-TW"), `${repository}/-/blob/main/README.zh-TW.md#creamdeck`);
+  assert.equal(readmeUrl(repository, "zh-CN"), `${repository}/blob/main/README.zh-CN.md#creamdeck`);
+  assert.equal(readmeUrl(repository, "zh-TW"), `${repository}/blob/main/README.zh-TW.md#creamdeck`);
   assert.equal(readmeUrl(repository, "ja"), `${repository}#creamdeck`);
 });
 

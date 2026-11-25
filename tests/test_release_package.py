@@ -21,6 +21,7 @@ class ReleasePackageTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('pass\n' if path.suffix == '.py' else 'fixture')
         (root / 'package.json').write_text(json.dumps({'version': '0.1.0'}))
+        (root / 'plugin.json').write_text(json.dumps({'name': 'CreamDeck', 'flags': ['debug', '_root']}))
 
     def javascript(self, args, **kwargs):
         Path(args[-1]).write_text('export default {};')
@@ -41,6 +42,10 @@ class ReleasePackageTests(unittest.TestCase):
                                  or name.endswith('.map') for name in names))
             self.assertEqual((root / 'py_modules/worker.py').read_text(), 'pass\n')
             self.assertFalse((root / 'py_modules/worker.pyc').exists())
+            # Releases drop the dev-only "debug" flag and keep the rest; the source keeps it.
+            self.assertEqual(json.loads((destination / 'plugin.json').read_text()),
+                             {'name': 'CreamDeck', 'flags': ['_root']})
+            self.assertEqual(json.loads((root / 'plugin.json').read_text())['flags'], ['debug', '_root'])
 
     @unittest.skipUnless(sys.version_info[:2] == (3, 14), 'Release archives require CPython 3.14')
     def test_archive_has_one_plugin_root_and_runtime_permissions(self):

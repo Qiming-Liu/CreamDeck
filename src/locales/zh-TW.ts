@@ -177,7 +177,7 @@ const translations: Translations = {
   recheckDone: "改好了，重新檢查",
 
   avatar: name => `${name} 頭像`,
-  gitlab: "GitLab",
+  github: "GitHub",
   bilibili: "B站",
   version: "版本",
   latestVersion: version => `最新版 v${version}`,
@@ -191,6 +191,7 @@ const translations: Translations = {
   credits: "致謝",
   recommended: "推薦",
   gcmDescription: "修改器管理",
+  dshDescription: "DeepSeek AI 助理",
   deckyPlugin: "Decky 外掛",
 
   installedGames: "裝了解鎖器的遊戲",

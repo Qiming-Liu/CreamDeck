@@ -20,8 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def stage(root: Path, destination: Path):
     destination.mkdir()
-    for name in ('main.py', 'package.json', 'plugin.json', 'README.md', 'LICENSE'):
+    for name in ('main.py', 'package.json', 'README.md', 'LICENSE'):
         shutil.copy2(root / name, destination / name)
+    # The dev tree keeps Decky's "debug" flag so live reload works; releases drop it.
+    metadata = json.loads((root / 'plugin.json').read_text(encoding='utf-8'))
+    if 'flags' in metadata:
+        metadata['flags'] = [flag for flag in metadata['flags'] if flag != 'debug']
+    (destination / 'plugin.json').write_text(
+        json.dumps(metadata, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     shutil.copytree(root / 'py_modules', destination / 'py_modules',
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     (destination / 'dist').mkdir()

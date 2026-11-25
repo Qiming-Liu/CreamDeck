@@ -227,12 +227,12 @@ class UpdateCheckTest(unittest.TestCase):
             self.assertFalse(update_check.newer(tag, "1.2.0"), tag)
         self.assertTrue(update_check.newer("1.21", "1.2.0"))
 
-    def test_checks_at_most_weekly_and_retries_failures_hourly(self):
-        with patch("update_check._fetch", return_value="1.0.6") as fetch:
+    def test_checks_at_most_daily_and_retries_failures_hourly(self):
+        with patch("update_check._fetch", return_value=("1.0.6", "1.0.6")) as fetch:
             self.assertEqual(update_check.latest_version(now=1000), "1.0.6")
-            self.assertEqual(update_check.latest_version(now=1000 + 6 * 86400), "1.0.6")
+            self.assertEqual(update_check.latest_version(now=1000 + 86400 - 1), "1.0.6")
             self.assertEqual(fetch.call_count, 1)
-            update_check.latest_version(now=1000 + 8 * 86400)
+            update_check.latest_version(now=1000 + 86400)
             self.assertEqual(fetch.call_count, 2)
         with patch("update_check._fetch", side_effect=OSError("offline")) as fetch:
             self.assertIsNone(update_check.latest_version(force=True, now=10 ** 6))
@@ -240,6 +240,17 @@ class UpdateCheckTest(unittest.TestCase):
             self.assertEqual(fetch.call_count, 1)
         cache = json.loads(Path(self.temporary.name, "update_check.json").read_text(encoding="utf-8"))
         self.assertIsNone(cache["latest"])
+
+    def test_a_release_looks_past_newer_test_builds_to_the_newest_release(self):
+        with patch("update_check._fetch", return_value=("1.0.8-test1", "1.0.7")):
+            self.assertEqual(update_check.latest_version(force=True, now=0, current="1.0.6"), "1.0.7")
+            self.assertEqual(update_check.latest_version(now=1, current="1.0.7-test2"), "1.0.8-test1")
+
+    def test_newest_picks_by_version_not_by_list_order(self):
+        tags = ["v1.0.8-test12", "v1.0.7", "v1.0.8-test3", None, "nightly"]
+        self.assertEqual(update_check.newest(tags), ("1.0.8-test12", "1.0.7"))
+        self.assertEqual(update_check.newest(["v1.0.10", "v1.0.9"]), ("1.0.10", "1.0.10"))
+        self.assertEqual(update_check.newest([]), (None, None))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
-"""Weekly check for a newer CreamDeck release, plus host facts for bug reports.
+"""Daily check for a newer CreamDeck release, plus host facts for bug reports.
 
-The result is cached in the plugin settings directory so the GitLab API is
-queried at most once every seven days. A failed check is never fatal: callers
+The result is cached in the plugin settings directory so the GitHub API is
+queried at most once a day. A failed check is never fatal: callers
 then only show the current version.
 """
 from __future__ import annotations
@@ -17,9 +17,9 @@ from atomic_json import write_json
 # Decky's bundled Python has no usable system CA store; Decky supplies one.
 from helpers import get_ssl_context  # type: ignore
 
-# Redirects to the newest release on GitLab.
-RELEASES_URL = "https://gitlab.com/api/v4/projects/alan-liu%2FCreamDeck/releases/permalink/latest"
-CHECK_INTERVAL = 7 * 24 * 60 * 60
+# The newest releases, test builds (pre-releases) included: GitHub's "latest" leaves those out.
+RELEASES_URL = "https://api.github.com/repos/Qiming-Liu/CreamDeck/releases?per_page=30"
+CHECK_INTERVAL = 24 * 60 * 60
 # Retry a failed check after an hour instead of on every page open.
 FAILURE_INTERVAL = 60 * 60
 # An optional label marks a test build, e.g. "1.0.7-test".
@@ -84,34 +84,45 @@ def _read_cache() -> dict:
         return {}
 
 
-def _fetch() -> str:
+def newest(tags) -> tuple[str | None, str | None]:
+    """The newest of `tags` overall and the newest release among them (None when none)."""
+    found = sorted((version for version in map(_canonical, tags) if version), key=_parse)
+    releases = [version for version in found if "-" not in version]
+    return (found[-1] if found else None, releases[-1] if releases else None)
+
+
+def _fetch() -> tuple[str, str | None]:
+    """The newest published version and the newest release."""
     request = urllib.request.Request(RELEASES_URL, headers={
-        "Accept": "application/json", "User-Agent": "CreamDeck-update-check"})
+        "Accept": "application/vnd.github+json", "User-Agent": "CreamDeck-update-check"})
     with urllib.request.urlopen(request, timeout=8, context=get_ssl_context()) as response:
-        data = json.loads(response.read(256 * 1024).decode("utf-8"))
-    latest = _canonical(data.get("tag_name") if isinstance(data, dict) else None)
+        data = json.loads(response.read(1024 * 1024).decode("utf-8"))
+    if not isinstance(data, list):
+        raise ValueError("Unexpected release list")
+    latest, release = newest(item.get("tag_name") for item in data
+                             if isinstance(item, dict) and not item.get("draft"))
     if latest is None:
-        raise ValueError("Unexpected release tag")
-    return latest
+        raise ValueError("No release tag")
+    return latest, release
 
 
-def latest_version(force: bool = False, now: float | None = None) -> str | None:
-    """Return the latest released version, or None when it is unknown."""
+def latest_version(force: bool = False, now: float | None = None, current: str = "") -> str | None:
+    """The newest version worth comparing with `current`, or None when it is unknown:
+    a test build looks at every published version, a release only at releases."""
     now = time.time() if now is None else now
     cache = _read_cache()
     checked = cache.get("checked_at") if isinstance(cache.get("checked_at"), (int, float)) else None
-    latest = _canonical(cache.get("latest"))
+    latest, release = _canonical(cache.get("latest")), _canonical(cache.get("release"))
     interval = CHECK_INTERVAL if latest else FAILURE_INTERVAL
-    if not force and checked is not None and 0 <= now - checked < interval:
-        return latest
-    try:
-        latest = _fetch()
-    except Exception as error:  # noqa: BLE001 - network failures only hide the badge
-        decky.logger.info(f"Update check failed: {error!r}")
-        write_json(_cache_path(), {"checked_at": now, "latest": None})
-        return None
-    write_json(_cache_path(), {"checked_at": now, "latest": latest})
-    return latest
+    if force or checked is None or not 0 <= now - checked < interval:
+        try:
+            latest, release = _fetch()
+        except Exception as error:  # noqa: BLE001 - network failures only hide the badge
+            decky.logger.info(f"Update check failed: {error!r}")
+            write_json(_cache_path(), {"checked_at": now, "latest": None, "release": None})
+            return None
+        write_json(_cache_path(), {"checked_at": now, "latest": latest, "release": release})
+    return latest if "-" in (_canonical(current) or "") else release
 
 
 def os_version() -> str:

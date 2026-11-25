@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { AVATAR } from "../assets/avatar";
 import { LOGO } from "../assets/logo";
-import { RECOMMENDED_LOGO } from "../assets/recommended";
+import { DECKYDSH_LOGO, RECOMMENDED_LOGO } from "../assets/recommended";
 import { Button, C, Icons, Main, SectionLabel, PageStyle, VersionLine } from "../components/ui";
 import { readmeUrl } from "../domain/readme";
 import { RELEASES_URL, REPOSITORY_URL, useUpdateInfo } from "../hooks/useUpdateInfo";
@@ -13,8 +13,11 @@ import LogPanel from "./LogPanel";
 
 const AUTHOR = "ProSS及时行乐";
 const BILIBILI_URL = "https://space.bilibili.com/23706122";
-const ISSUES_URL = `${REPOSITORY_URL}/-/issues/new`;
-const RECOMMENDED = { name: "DeckyGCM", url: "https://gitlab.com/alan-liu/Decky-Game-Cheats-Manager#deckygcm" };
+const ISSUES_URL = `${REPOSITORY_URL}/issues/new`;
+const RECOMMENDED = [
+  { name: "DeckyGCM", url: "https://github.com/Qiming-Liu/Decky-Game-Cheats-Manager#deckygcm", logo: RECOMMENDED_LOGO, description: "gcmDescription" },
+  { name: "DeckyDSH", url: "https://github.com/Qiming-Liu/DeckyDSH#deckydsh", logo: DECKYDSH_LOGO, description: "dshDescription" },
+] as const;
 const CREDITS = [
   { name: "CreamInstaller", author: "FroggMaster" },
   { name: "CreamAPI", author: "deadmau5" },
@@ -29,7 +32,7 @@ export function feedbackUrl(version: string, os: string, proton: string, appId: 
   // Kept short: every character makes the on-screen QR code denser.
   const body = [`CreamDeck v${version}`, os || "unknown OS", proton || "no Proton", `AppID ${appId}`,
     "Attach: About > Logs > Export"].join("\n");
-  return `${ISSUES_URL}?${new URLSearchParams({ "issue[description]": body })}`;
+  return `${ISSUES_URL}?${new URLSearchParams({ body })}`;
 }
 
 function QrCode({ text, label, size = 220 }: { text: string; label: string; size?: number }) {
@@ -87,7 +90,7 @@ export default function AboutTab({ appId, compatTool }: { appId: string; compatT
           <div style={{ flex: "1 1 auto", minWidth: 0, fontSize: 18, fontWeight: 700, color: C.white,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{AUTHOR}</div>
           {!english && <Button icon label={t.bilibili} onClick={() => openLink(BILIBILI_URL)}>{Icons.bilibili()}</Button>}
-          <Button icon label={t.gitlab} onClick={() => openLink(readmeUrl(REPOSITORY_URL, language))}>{Icons.gitlab()}</Button>
+          <Button icon label={t.github} onClick={() => openLink(readmeUrl(REPOSITORY_URL, language))}>{Icons.github()}</Button>
         </Focusable>
 
         <div style={row}>
@@ -98,7 +101,7 @@ export default function AboutTab({ appId, compatTool }: { appId: string; compatT
         </div>
         <Focusable flow-children="row" style={{ ...row, borderBottom: `1px solid ${C.line}` }}>
           <RowText title={t.feedback} description={t.feedbackDescription} />
-          <LinkButton icon={Icons.gitlab()} onClick={() => showModal(<FeedbackModal url={feedback} />, window)}>{t.feedbackIssue}</LinkButton>
+          <LinkButton icon={Icons.github()} onClick={() => showModal(<FeedbackModal url={feedback} />, window)}>{t.feedbackIssue}</LinkButton>
         </Focusable>
 
         <SectionLabel top={6}>{t.credits}</SectionLabel>
@@ -110,12 +113,14 @@ export default function AboutTab({ appId, compatTool }: { appId: string; compatT
         </div>
 
         <SectionLabel top={6}>{t.recommended}</SectionLabel>
-        <Focusable className="cd-focus" onActivate={() => openLink(RECOMMENDED.url)} style={{ ...row, borderBottom: `1px solid ${C.line}` }}>
-          <img src={RECOMMENDED_LOGO} alt="" width={36} height={36} style={{ flex: "0 0 36px", borderRadius: 6 }} />
-          <RowText title={RECOMMENDED.name} description={t.gcmDescription} />
-          <span style={{ flex: "0 0 auto", fontSize: 12, color: C.muted }}>{t.deckyPlugin}</span>
-          {Icons.chevronRight()}
-        </Focusable>
+        <div style={{ display: "flex", flexDirection: "column", flex: "0 0 auto", borderBottom: `1px solid ${C.line}` }}>
+          {RECOMMENDED.map(plugin => <Focusable key={plugin.name} className="cd-focus" onActivate={() => openLink(plugin.url)} style={row}>
+            <img src={plugin.logo} alt="" width={36} height={36} style={{ flex: "0 0 36px", borderRadius: 6 }} />
+            <RowText title={plugin.name} description={t[plugin.description]} />
+            <span style={{ flex: "0 0 auto", fontSize: 12, color: C.muted }}>{t.deckyPlugin}</span>
+            {Icons.chevronRight()}
+          </Focusable>)}
+        </div>
       </Focusable>
 
       {/* The log gets the whole right half. */}

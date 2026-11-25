@@ -317,7 +317,7 @@ class Plugin:
     async def get_update_info(self, force: bool = False):
         current = decky.DECKY_PLUGIN_VERSION
         try:
-            latest = await asyncio.to_thread(update_check.latest_version, bool(force))
+            latest = await asyncio.to_thread(update_check.latest_version, bool(force), None, current)
         except Exception as error:  # noqa: BLE001 - the badge is optional
             decky.logger.info(f"Update check failed: {error!r}")
             latest = None

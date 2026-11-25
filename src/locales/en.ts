@@ -190,7 +190,7 @@ const translations = {
 
   // About
   avatar: (name: string) => `${name} avatar`,
-  gitlab: "GitLab",
+  github: "GitHub",
   bilibili: "Bilibili",
   version: "Version",
   latestVersion: (version: string) => `Latest v${version}`,
@@ -204,6 +204,7 @@ const translations = {
   credits: "Thanks",
   recommended: "Recommended",
   gcmDescription: "Cheat Manager",
+  dshDescription: "DeepSeek AI assistant",
   deckyPlugin: "Decky plugin",
 
   // Quick access
